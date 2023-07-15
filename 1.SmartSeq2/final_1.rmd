@@ -1,0 +1,1500 @@
+---
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+# 20210601/0630_SS2_ZY, final                               
+           
+ILC2 IL25+/-, in vitro (02/)04/48/72h              
+(02h invitro ILC2 not stable, not involved in merged downstream analysis)              
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#necessary packages and functions  
+source("I:/Shared_win/projects/RNA_normal/analysis.r")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(sva)
+library(ggplot2)
+library(tidyverse)
+```
+
+
+## load processed data            
+
+### TPM matrix              
+
+```{r}
+matt_raw <- read.table("./matrix/RNAseq.SS2_ZY_20210701.raw_tpm.gene.csv", header = T, sep = ",")
+rownames(matt_raw) <- matt_raw$gene
+matt_raw <- matt_raw[,2:ncol(matt_raw)]
+
+matt_pc <- read.table("./matrix/RNAseq.SS2_ZY_20210701.filt_tpm.pc_gene.csv", header = T, sep = ",")
+rownames(matt_pc) <- matt_pc$gene
+matt_pc <- matt_pc[,2:ncol(matt_pc)]
+
+idx.C04h <- c(13:16,9:12)
+idx.C48h <- c(21:24,17:20)
+idx.C72h <- c(29:32,25:28)
+
+idx.IL25_C48hvsC04h <- c(21:24,13:16)
+idx.IL25_C72hvsC04h <- c(29:32,13:16)
+idx.IL25_C72hvsC48h <- c(29:32,21:24)
+
+idx.nonIL25_C48hvsC04h <- c(17:20,9:12)
+idx.nonIL25_C72hvsC04h <- c(25:28,9:12)
+idx.nonIL25_C72hvsC48h <- c(25:28,17:20)
+```
+
+```{r paged.print=FALSE}
+dim(matt_raw)
+head(matt_raw)
+```
+
+
+```{r paged.print=FALSE}
+dim(matt_pc)
+head(matt_pc)
+```
+
+#### clustering             
+
+##### PCA       
+```{r echo=FALSE}
+cnts <- c(rep("C02h_nonIL25",4),rep("C02h_IL25",4),
+          rep("C04h_nonIL25",4),rep("C04h_IL25",4),
+          rep("C48h_nonIL25",4),rep("C48h_IL25",4),
+          rep("C72h_nonIL25",4),rep("C72h_IL25",4))
+bats <- colnames(matt_pc)
+reps <- c(rep(1:4,8))
+
+# variable genes
+rv <- rowVars(matt_pc[,])
+selt <- order(rv, decreasing = TRUE)[seq_len(2000)]
+
+#calculate principal components for the uncorrected data
+pca_obj = prcomp(t(matt_pc[selt,]), scale.=TRUE, center = TRUE)
+
+#pull PCA values out of the PCA object
+pca_d = as.data.frame(pca_obj$x)
+
+#assign labels to the data frame
+pca_d[,"condition"] = cnts
+pca_d[,"batch"] = bats
+pca_d[,"replicate"] = reps
+```
+
+
+```{r echo=FALSE,fig.width=7.2, fig.height=4.8}
+plot(pca_obj$sdev,pch=20, xlab="PC",ylab="Standard Variation", main="PCs of top2000 highly variable genes")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures/PCs_SV.pdf",
+    width = 7.2,
+    height = 4.8)
+plot(pca_obj$sdev,pch=20, xlab="PC",ylab="Standard Variation", main="PCs of top2000 highly variable genes")
+dev.off()
+```
+
+
+##### summary of PCs:       
+```{r echo=FALSE}
+summary(pca_obj)
+```
+
+
+```{r echo=FALSE, fig.height=6, fig.width=9, message=FALSE, warning=FALSE}
+cols <- c("#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+names(cols) <- unique(cnts)
+
+#p1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p1 = p1 + geom_point(size=3.5)
+p1 = p1 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5)
+p1 = p1 + stat_ellipse(type="norm", linetype=2)
+p1 = p1 + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p1 = p1 + scale_colour_manual(values = cols) 
+#p1 = p1 + scale_shape_manual(values=c(16,17,15))
+p1
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures/PCA1_2.pdf",
+       plot = p1,
+       width = 9,
+       height = 6)
+```
+
+
+
+```{r echo=FALSE, fig.height=6, fig.width=9, message=FALSE, warning=FALSE}
+p2 = ggplot(data=pca_d, aes(x=PC3, y=PC4, color=condition))
+p2 = p2 + geom_point(size=3.5)
+p2 = p2 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5)
+p2 = p2 + stat_ellipse(type="norm", linetype=2)
+p2 = p2 + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p2 = p2 + scale_colour_manual(values = cols) 
+#p2 = p2 + scale_shape_manual(values=c(16,17,15))
+p2
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures/PCA3_4.pdf",
+       plot = p2,
+       width = 9,
+       height = 6)
+```
+
+##### tSNE     
+```{r echo=FALSE, message=FALSE, warning=FALSE,fig.width=12,fig.height=9}
+set.seed(122)
+PCs <- 1:12
+PCss <- paste0(PCs[1],":",PCs[length(PCs)])
+pca.emb <- pca_obj$x %*% diag(pca_obj$sdev**2)
+
+tsne_out <- Rtsne::Rtsne(
+  as.matrix(pca.emb[,PCs]),
+  pca = FALSE,
+  perplexity = 3,
+  max_iter = 2000
+)
+tsne.emb <- data.frame(tsne_out$Y)
+tsne.emb[,"condition"] = cnts
+tsne.emb[,"batch"] = bats
+tsne.emb[,"replicate"] = reps
+
+#plot the tSNE
+p4 = ggplot(data=tsne.emb, aes(x=X1, y=X2, color=condition))
+p4 = p4 + geom_point(size=3.2)
+p4 = p4 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5)
+p4 = p4 + stat_ellipse(type="norm", linetype=2)
+p4 = p4 + labs(x="tSNE_1",y="tSNE_2",
+               title=paste0("tSNE\nusing PC",PCss),
+               color="Condition", shape="batch")
+p4 = p4 + scale_colour_manual(values = cols) 
+#p4 = p4 + scale_shape_manual(values=c(16,17,15))
+p4
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures/tSNE.pdf",
+       plot = p4,
+       width = 9,
+       height = 6)
+```
+
+##### correlation of all filtered protein-coding genes, grouping by correlation      
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=7.2,fig.height=7.2}
+  Ret_mat <- log2(matt_pc[,]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.75
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+  heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures/correlation.pdf",
+    width = 7.2,
+    height = 7.2)
+heatplot
+dev.off()
+```
+
+#### clustering (without C02h)                            
+
+##### PCA       
+```{r echo=FALSE}
+cnts <- c(
+          #rep("C02h_nonIL25",4),rep("C02h_IL25",4),
+          rep("C04h_nonIL25",4),rep("C04h_IL25",4),
+          rep("C48h_nonIL25",4),rep("C48h_IL25",4),
+          rep("C72h_nonIL25",4),rep("C72h_IL25",4))
+bats <- colnames(matt_pc[,9:32])
+reps <- c(rep(1:4,6))
+
+# variable genes
+rv <- rowVars(matt_pc[,9:32])
+selt <- order(rv, decreasing = TRUE)[seq_len(2000)]
+
+#calculate principal components for the uncorrected data
+pca_obj = prcomp(t(matt_pc[selt,9:32]), scale.=TRUE, center = TRUE)
+
+#pull PCA values out of the PCA object
+pca_d = as.data.frame(pca_obj$x)
+
+#assign labels to the data frame
+pca_d[,"condition"] = cnts
+pca_d[,"batch"] = bats
+pca_d[,"replicate"] = reps
+```
+
+
+```{r echo=FALSE,fig.width=7.2, fig.height=4.8}
+plot(pca_obj$sdev,pch=20, xlab="PC",ylab="Standard Variation", main="PCs of top2000 highly variable genes")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures/PCs_SV.withoutC02h.pdf",
+    width = 7.2,
+    height = 4.8)
+plot(pca_obj$sdev,pch=20, xlab="PC",ylab="Standard Variation", main="PCs of top2000 highly variable genes")
+dev.off()
+```
+
+
+##### summary of PCs:       
+```{r echo=FALSE}
+summary(pca_obj)
+```
+
+
+```{r echo=FALSE, fig.height=6, fig.width=9, message=FALSE, warning=FALSE}
+cols <- c(
+          #"#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+names(cols) <- unique(cnts)
+
+#p1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p1 = p1 + geom_point(size=3.5)
+p1 = p1 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5)
+p1 = p1 + stat_ellipse(type="norm", linetype=2)
+p1 = p1 + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p1 = p1 + scale_colour_manual(values = cols) 
+#p1 = p1 + scale_shape_manual(values=c(16,17,15))
+p1
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures/PCA1_2.withoutC02h.pdf",
+       plot = p1,
+       width = 9,
+       height = 6)
+```
+
+
+##### 20220406mod              
+
+remove bg and grid, and resize    
+
+```{r echo=FALSE, fig.height=5.7, fig.width=7.2, message=FALSE, warning=FALSE}
+cols <- c(
+          #"#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+names(cols) <- unique(cnts)
+
+#p1m = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p1m = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p1m = p1m + geom_point(size=4.5, alpha=0.65)
+p1m = p1m + ggrepel::geom_text_repel(mapping = aes(label=bats),size=3.2, show.legend = F)
+p1m = p1m + stat_ellipse(type="norm", linetype=2, show.legend = F, lwd = 0.65)
+p1m = p1m + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p1m = p1m + scale_colour_manual(values = cols) 
+#p1m = p1m + scale_shape_manual(values=c(16,17,15))
+p1m = p1m + theme_bw() + theme(panel.grid=element_blank(),
+                               text = element_text(size=16.5))
+p1m
+```
+
+```{r echo=FALSE, fig.height=5.7, fig.width=7.2, message=FALSE, warning=FALSE}
+cols <- c(
+          #"#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+names(cols) <- unique(cnts)
+
+#p1m = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p1m = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p1m = p1m + geom_point(size=0.65, alpha=0.65)
+p1m = p1m + ggrepel::geom_text_repel(mapping = aes(label=bats),size=0.75, show.legend = F)
+p1m = p1m + stat_ellipse(type="norm", linetype=2, show.legend = F, lwd = 0.25)
+p1m = p1m + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p1m = p1m + scale_colour_manual(values = cols) 
+#p1m = p1m + scale_shape_manual(values=c(16,17,15))
+p1m = p1m + theme_bw() + theme(panel.grid=element_blank(),
+                               text = element_text(size=4))
+p1m
+```
+
+```{r echo=FALSE, fig.height=5.7, fig.width=7.2, message=FALSE, warning=FALSE}
+cols <- c(
+          #"#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+names(cols) <- unique(cnts)
+
+#p2m = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p2m = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p2m = p2m + geom_point(size=4.5, alpha=0.65)
+#p2m = p2m + ggrepel::geom_text_repel(mapping = aes(label=bats),size=3.2, show.legend = F)
+p2m = p2m + stat_ellipse(type="norm", linetype=2, show.legend = F, lwd = 0.65)
+p2m = p2m + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p2m = p2m + scale_colour_manual(values = cols) 
+#p2m = p2m + scale_shape_manual(values=c(16,17,15))
+p2m = p2m + theme_bw() + theme(panel.grid=element_blank(),
+                               text = element_text(size=16.5))
+p2m
+```
+
+```{r echo=FALSE, fig.height=5.7, fig.width=7.2, message=FALSE, warning=FALSE}
+cols <- c(
+          #"#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+
+cols <- c("#555555","#F87A27",
+          "#45597E","#E35B51",
+          "#4D6859","#EA68D0")
+
+names(cols) <- unique(cnts)
+
+#p2m1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p2m1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p2m1 = p2m1 + geom_point(size=5.5, alpha=0.85)
+#p2m1 = p2m1 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=3.2, show.legend = F)
+#p2m1 = p2m1 + stat_ellipse(type="norm", linetype=2, show.legend = F, lwd = 0.65)
+p2m1 = p2m1 + labs(title="  \n ",
+               color="Condition", shape="batch", x="PC_1",y="PC_2")
+p2m1 = p2m1 + scale_colour_manual(values = cols) 
+#p2m1 = p2m1 + scale_shape_manual(values=c(16,17,15))
+p2m1 = p2m1 + theme_bw() + theme(panel.grid=element_blank(),
+                               text = element_text(size=18.5))
+p2m1
+```
+
+
+```{r echo=FALSE, fig.height=5.7, fig.width=6.8, message=FALSE, warning=FALSE}
+cols <- c(
+          #"#800000","#FF8080",
+          "#808000","#FF8000",
+          "#004080","#0080FF",
+          "#004000","#82D58A")
+
+cols <- c("#555555","#F87A27")
+
+names(cols) <- c("nonIL25","IL25")
+
+
+
+shapes <- c(19,19,
+            15,15,
+            17,17)
+shapes <- c(21,
+            22,
+            24)
+
+names(shapes) <- c("C04h","C48h","C72h")
+
+#p2m2 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+p2m2 = ggplot(data=pca_d, aes(x=PC1, y=PC2, 
+                              fill=c("nonIL25","IL25")[rep(c(rep(1,4),rep(2,4)),3)], 
+                              shape=c(rep("C04h",8),
+                                      rep("C48h",8),
+                                      rep("C72h",8))))
+p2m2 = p2m2 + geom_point(size=5.5, alpha=0.65)
+#p2m2 = p2m2 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=3.2, show.legend = F)
+#p2m2 = p2m2 + stat_ellipse(type="norm", linetype=2, show.legend = F, lwd = 0.65)
+p2m2 = p2m2 + labs(title="  \n ",
+               color="Condition", shape="batch", x="PC_1",y="PC_2")
+p2m2 = p2m2 + scale_fill_manual(values = cols, guide = "none") 
+p2m2 = p2m2 + scale_shape_manual(values = shapes, guide = guide_legend(title = "Condition"))
+#p2m2 = p2m2 + scale_shape_manual(values=c(16,17,15))
+p2m2 = p2m2 + theme_bw() + theme(panel.grid=element_blank(),
+                               text = element_text(size=18.5),legend.key.size = unit(1.5,"line"))
+p2m2
+```
+
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures_20220406mod/PCA1_2.withoutC02h.202204mod.pdf",
+       plot = p1m,
+       width = 7.2,
+       height = 5.7)
+
+ggsave("./figures_20220406mod/PCA1_2.withoutC02h.202204mod_nolabel.pdf",
+       plot = p2m,
+       width = 7.2,
+       height = 5.7)
+
+ggsave("./figures_20220406mod/PCA1_2.withoutC02h.202204mod_shapes.pdf",
+       plot = p2m2,
+       width = 6.8,
+       height = 5.7)
+```
+
+
+
+
+
+
+
+```{r echo=FALSE, fig.height=6, fig.width=9, message=FALSE, warning=FALSE}
+p2 = ggplot(data=pca_d, aes(x=PC3, y=PC4, color=condition))
+p2 = p2 + geom_point(size=3.5)
+p2 = p2 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5)
+p2 = p2 + stat_ellipse(type="norm", linetype=2)
+p2 = p2 + labs(title="PCA\n(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p2 = p2 + scale_colour_manual(values = cols) 
+#p2 = p2 + scale_shape_manual(values=c(16,17,15))
+p2
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures/PCA3_4.withoutC02h.pdf",
+       plot = p2,
+       width = 9,
+       height = 6)
+```
+
+##### tSNE     
+```{r echo=FALSE, message=FALSE, warning=FALSE,fig.width=12,fig.height=9}
+set.seed(122)
+PCs <- 1:10
+PCss <- paste0(PCs[1],":",PCs[length(PCs)])
+pca.emb <- pca_obj$x %*% diag(pca_obj$sdev**2)
+
+tsne_out <- Rtsne::Rtsne(
+  as.matrix(pca.emb[,PCs]),
+  pca = FALSE,
+  perplexity = 3,
+  max_iter = 2000
+)
+tsne.emb <- data.frame(tsne_out$Y)
+tsne.emb[,"condition"] = cnts
+tsne.emb[,"batch"] = bats
+tsne.emb[,"replicate"] = reps
+
+#plot the tSNE
+p4 = ggplot(data=tsne.emb, aes(x=X1, y=X2, color=condition))
+p4 = p4 + geom_point(size=3.2)
+p4 = p4 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5)
+p4 = p4 + stat_ellipse(type="norm", linetype=2)
+p4 = p4 + labs(x="tSNE_1",y="tSNE_2",
+               title=paste0("tSNE\nusing PC",PCss),
+               color="Condition", shape="batch")
+p4 = p4 + scale_colour_manual(values = cols) 
+#p4 = p4 + scale_shape_manual(values=c(16,17,15))
+p4
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("./figures/tSNE.withoutC02h.pdf",
+       plot = p4,
+       width = 9,
+       height = 6)
+```
+
+##### correlation of all filtered protein-coding genes, grouping by correlation      
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=6.8,fig.height=6.8}
+  Ret_mat <- log2(matt_pc[,9:32]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.75
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+  heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures/correlation.withoutC02h.pdf",
+    width = 6.8,
+    height = 6.8)
+heatplot
+dev.off()
+```
+
+
+
+
+### DEGs                            
+
+```{r}
+mark_rowname <- function(DEGs){
+  rownames(DEGs) <- DEGs$gene
+  return(DEGs)
+}
+
+
+DEGs.C04h <- mark_rowname(read.table("./DEGs/IL25_vs_nonIL25/edgeR_DEGs_C04h5.6.7.8_vs_C04h1.2.3.4.csv",
+                        header = T, sep = ","))
+DEGs.C48h <- mark_rowname(read.table("./DEGs/IL25_vs_nonIL25/edgeR_DEGs_C48h5.6.7.8_vs_C48h1.2.3.4.csv",
+                        header = T, sep = ","))
+DEGs.C72h <- mark_rowname(read.table("./DEGs/IL25_vs_nonIL25/edgeR_DEGs_C72h5.6.7.8_vs_C72h1.2.3.4.csv",
+                        header = T, sep = ","))
+
+DEGs.IL25_C48hvsC04h <- mark_rowname(read.table("./DEGs/times_IL25/edgeR_DEGs_C48h5.6.7.8_vs_C04h5.6.7.8.csv",
+                        header = T, sep = ","))
+DEGs.IL25_C72hvsC04h <- mark_rowname(read.table("./DEGs/times_IL25/edgeR_DEGs_C72h5.6.7.8_vs_C04h5.6.7.8.csv",
+                        header = T, sep = ","))
+DEGs.IL25_C72hvsC48h <- mark_rowname(read.table("./DEGs/times_IL25/edgeR_DEGs_C72h5.6.7.8_vs_C48h5.6.7.8.csv",
+                        header = T, sep = ","))
+
+DEGs.nonIL25_C48hvsC04h <- mark_rowname(read.table("./DEGs/times_nonIL25/edgeR_DEGs_C48h1.2.3.4_vs_C04h1.2.3.4.csv",
+                        header = T, sep = ","))
+DEGs.nonIL25_C72hvsC04h <- mark_rowname(read.table("./DEGs/times_nonIL25/edgeR_DEGs_C72h1.2.3.4_vs_C04h1.2.3.4.csv",
+                        header = T, sep = ","))
+DEGs.nonIL25_C72hvsC48h <- mark_rowname(read.table("./DEGs/times_nonIL25/edgeR_DEGs_C72h1.2.3.4_vs_C48h1.2.3.4.csv",
+                        header = T, sep = ","))
+
+
+
+```
+
+#### C04h: IL25 vs nonIL25         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("C04h: IL25 vs nonIL25")
+DEGs <- DEGs.C04h
+p.cut <- 0.05
+fc.cut <- 1.5
+idx <- c(13:16,9:12)
+
+rets_1.1 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.05, FC >1.5       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_1.1$up,rets_1.1$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.8
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.C04h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=12, fig.width=15, warning=FALSE}
+rets_1.1$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.C04h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_1.1$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_1.1$up[1:40],rets_1.1$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.C04h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.C04h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+#### C48h: IL25 vs nonIL25         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("C48h: IL25 vs nonIL25")
+DEGs <- DEGs.C48h
+p.cut <- 0.05
+fc.cut <- 1.5
+idx <- c(21:24,17:20)
+
+rets_1.2 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.05, FC >1.5       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_1.2$up,rets_1.2$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.8
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.C48h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=12, fig.width=15, warning=FALSE}
+rets_1.2$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.C48h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_1.2$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_1.2$up[1:40],rets_1.2$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.C48h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.C48h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+#### C72h: IL25 vs nonIL25         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("C72h: IL25 vs nonIL25")
+DEGs <- DEGs.C72h
+p.cut <- 0.05
+fc.cut <- 1.5
+idx <- c(29:32,25:28)
+
+rets_1.3 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.05, FC >1.5       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_1.3$up,rets_1.3$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.75
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.C72h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=12, fig.width=15, warning=FALSE}
+rets_1.3$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.C72h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_1.3$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_1.3$up[1:40],rets_1.3$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.C72h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.C72h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+#### IL25: C48h vs C04h         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("IL25: C48h vs C04h")
+DEGs <- DEGs.IL25_C48hvsC04h
+p.cut <- 0.01
+fc.cut <- 2
+idx <- idx.IL25_C48hvsC04h
+
+rets_2.1 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.01, FC >2       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_2.1$up,rets_2.1$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.55
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.IL25_C48hvsC04h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=15, fig.width=15, warning=FALSE}
+rets_2.1$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.IL25_C48hvsC04h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_2.1$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8, message=FALSE, warning=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_2.1$up[1:40],rets_2.1$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.IL25_C48hvsC04h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.IL25_C48hvsC04h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+#### IL25: C72h vs C04h         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("IL25: C72h vs C04h")
+DEGs <- DEGs.IL25_C72hvsC04h
+p.cut <- 0.01
+fc.cut <- 2
+idx <- idx.IL25_C72hvsC04h
+
+rets_2.2 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.01, FC >2       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_2.2$up,rets_2.2$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.55
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.IL25_C72hvsC04h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=15, fig.width=15, warning=FALSE}
+rets_2.2$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.IL25_C72hvsC04h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_2.2$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8, message=FALSE, warning=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_2.2$up[1:40],rets_2.2$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.IL25_C72hvsC04h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.IL25_C72hvsC04h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+
+#### IL25: C72h vs C48h         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("IL25: C72h vs C48h")
+DEGs <- DEGs.IL25_C72hvsC48h
+p.cut <- 0.05
+fc.cut <- 1.5
+idx <- idx.IL25_C72hvsC48h
+
+rets_2.3 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.05, FC >1.5       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_2.3$up,rets_2.3$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.8
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.IL25_C72hvsC48h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=12, fig.width=15, warning=FALSE}
+rets_2.3$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.IL25_C72hvsC48h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_2.3$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8, message=FALSE, warning=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_2.3$up[1:40],rets_2.3$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.IL25_C72hvsC48h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.IL25_C72hvsC48h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+#### nonIL25: C48h vs C04h         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("nonIL25: C48h vs C04h")
+DEGs <- DEGs.nonIL25_C48hvsC04h
+p.cut <- 0.01
+fc.cut <- 2
+idx <- idx.nonIL25_C48hvsC04h
+
+rets_3.1 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.01, FC >2       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_3.1$up,rets_3.1$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.55
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.nonIL25_C48hvsC04h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=15, fig.width=15, warning=FALSE}
+rets_3.1$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.nonIL25_C48hvsC04h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_3.1$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8, message=FALSE, warning=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_3.1$up[1:40],rets_3.1$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.nonIL25_C48hvsC04h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.nonIL25_C48hvsC04h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+#### nonIL25: C72h vs C04h         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("nonIL25: C72h vs C04h")
+DEGs <- DEGs.nonIL25_C72hvsC04h
+p.cut <- 0.01
+fc.cut <- 2
+idx <- idx.nonIL25_C72hvsC04h
+
+rets_3.2 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.01, FC >2       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_3.2$up,rets_3.2$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.55
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.nonIL25_C72hvsC04h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=15, fig.width=15, warning=FALSE}
+rets_3.2$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.nonIL25_C72hvsC04h_DEGs.top40_label.pdf",
+    height = 12, width = 15)
+rets_3.2$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=9.6, fig.width=4.8, message=FALSE, warning=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_3.2$up[1:40],rets_3.2$down[1:40])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.nonIL25_C72hvsC04h_DEGs.top40_log2tpm.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.nonIL25_C72hvsC04h_DEGs.top40_zscore.pdf",
+    height = 9.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top40 zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+
+#### nonIL25: C72h vs C48h         
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Cnt <- paste0("nonIL25: C72h vs C48h")
+DEGs <- DEGs.nonIL25_C72hvsC48h
+p.cut <- 0.05
+fc.cut <- 1.2
+idx <- idx.nonIL25_C72hvsC48h
+
+rets_3.3 <- finalplot(as.matrix(matt_raw)[,idx], DEGs, Cnt, p.cut, fc.cut, 
+                  Sign = TRUE, Sign_dn = 40, Sign_up = 40, padjust = TRUE)
+```
+
+##### using cutoff: p.adjust <0.05, FC >1.2       
+
+```{r echo=FALSE}
+cat(Cnt," \n\nDEGs: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut) | log2FoldChange < -log2(fc.cut)))[1],
+    "\n  up: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange > log2(fc.cut)))[1],
+    "\ndown: ",dim(DEGs %>% filter(padj <p.cut) %>% filter(log2FoldChange < -log2(fc.cut)))[1])
+```
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=4.8,fig.height=4.8}
+  Ret_mat <- log2(matt_raw[c(rets_3.3$up,rets_3.3$down),idx]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.8
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+ heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/correlation.nonIL25_C72hvsC48h_DEGs.pdf",
+    height = 4.8, width = 4.8)
+heatplot
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=15, fig.width=18, warning=FALSE}
+rets_3.3$vol
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/volcano.nonIL25_C72hvsC48h_DEGs.top40_label.pdf",
+    height = 15, width = 18)
+rets_3.3$vol
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=7.6, fig.width=4.8, message=FALSE, warning=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+
+genes <- c(rets_3.3$up[1:33],rets_3.3$down[1:27])
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top log2(TPM+1)", gaps_row = c(33), gaps_col = c(4))
+
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top zscore", gaps_row = c(33), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf(file = "./figures/heatmap.nonIL25_C72hvsC48h_DEGs.top_log2tpm.pdf",
+    height = 7.6, width = 4.8)
+pheatmap(log2(matt_raw[genes,idx]+1),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top log2(TPM+1)", gaps_row = c(40), gaps_col = c(4))
+dev.off()
+
+pdf(file = "./figures/heatmap.nonIL25_C72hvsC48h_DEGs.top_zscore.pdf",
+    height = 7.6, width = 4.8)
+pheatmap(zscore_mat(log2(matt_raw[genes,idx]+1)),cluster_rows = F, cluster_cols = F,
+         fontsize_row = 8.5,
+         main = "top zscore", gaps_row = c(40), gaps_col = c(4),
+         color = color.test,
+         breaks = seq(-1.25,1.25,0.025))
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

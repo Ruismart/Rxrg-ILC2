@@ -1,0 +1,1866 @@
+---
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+# 20210601/0630_SS2_ZY, final                               
+           
+ILC2 IL25+/-, in vitro (02/)04/48/72h              
+(02h invitro ILC2 not stable, not involved in merged downstream analysis)              
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#necessary packages and functions  
+source("I:/Shared_win/projects/RNA_normal/analysis.r")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(sva)
+library(ggplot2)
+library(tidyverse)
+```
+
+
+```{r include=FALSE}
+load("final_1.RData")
+```
+
+
+```{r}
+getwd()
+```
+
+
+
+## comparison of DEGs        
+
+```{r echo=FALSE}
+idx.nonIL25_C02h <- c(1:4)
+idx.IL25_C02h <- c(5:8)
+
+idx.nonIL25_C04h <- c(9:12)
+idx.nonIL25_C48h <- c(17:20)
+idx.nonIL25_C72h <- c(25:28)
+idx.IL25_C04h <- c(13:16)
+idx.IL25_C48h <- c(21:24)
+idx.IL25_C72h <- c(29:32)
+```
+
+```{r echo=FALSE}
+proc_DEG <- function(deg, p.cut=0.05, FC.cut = 2, padj=TRUE, abs=TRUE, mat_cut=NULL, gene_cut=NULL){
+    rownames(deg) <- deg$gene
+    
+    if(padj==TRUE){
+        deg <- deg %>% filter(padj < p.cut)
+    }else{
+        deg <- deg %>% filter(pvalue < p.cut)
+    }
+    
+    if(abs==TRUE){
+        deg <- deg %>% filter(abs(FC) > FC.cut)
+    }else if(FC.cut >0){
+        deg <- deg %>% filter(FC > FC.cut)
+    }else{
+        deg <- deg %>% filter(FC < FC.cut)
+    }
+    
+    if(!is.null(mat_cut)){
+        deg <- deg[rownames(deg) %in% rownames(mat_cut),]
+    }
+    if(!is.null(gene_cut)){
+        deg <- deg[rownames(deg) %in% gene_cut,]
+    }
+    return(deg)
+}
+```
+
+
+### cutoffs to overlap                
+
+##### TPM > 10 in at least 3 cells of one condition      
+```{r}
+#
+cut_tpm <- 10
+cut_cell <- 3
+
+#
+matt_pc.cut <- matt_pc
+matt_pc.cut <- matt_pc.cut[rowSums(matt_pc.cut[,idx.nonIL25_C04h] > cut_tpm) >= cut_cell |
+                           rowSums(matt_pc.cut[,idx.nonIL25_C48h] > cut_tpm) >= cut_cell |
+                           rowSums(matt_pc.cut[,idx.nonIL25_C72h] > cut_tpm) >= cut_cell |
+                           rowSums(matt_pc.cut[,idx.IL25_C04h] > cut_tpm) >= cut_cell |
+                           rowSums(matt_pc.cut[,idx.IL25_C48h] > cut_tpm) >= cut_cell |
+                           rowSums(matt_pc.cut[,idx.IL25_C72h] > cut_tpm) >= cut_cell,]
+```
+
+```{r paged.print=FALSE}
+dim(matt_pc.cut[,-c(idx.IL25_C02h,idx.nonIL25_C02h)])
+head(matt_pc.cut[,-c(idx.IL25_C02h,idx.nonIL25_C02h)])
+```
+
+##### p.adj < 0.01, FC > 2          
+
+```{r}
+p.cut <- 0.01
+FC.cut1 <- 2
+FC.cut2 <- -2
+
+nonIL25_C48hvsC04h.hi <- proc_DEG(DEGs.nonIL25_C48hvsC04h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+nonIL25_C48hvsC04h.lo <- proc_DEG(DEGs.nonIL25_C48hvsC04h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+nonIL25_C72hvsC04h.hi <- proc_DEG(DEGs.nonIL25_C72hvsC04h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+nonIL25_C72hvsC04h.lo <- proc_DEG(DEGs.nonIL25_C72hvsC04h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+nonIL25_C72hvsC48h.hi <- proc_DEG(DEGs.nonIL25_C72hvsC48h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+nonIL25_C72hvsC48h.lo <- proc_DEG(DEGs.nonIL25_C72hvsC48h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+
+IL25_C48hvsC04h.hi <- proc_DEG(DEGs.IL25_C48hvsC04h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+IL25_C48hvsC04h.lo <- proc_DEG(DEGs.IL25_C48hvsC04h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+IL25_C72hvsC04h.hi <- proc_DEG(DEGs.IL25_C72hvsC04h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+IL25_C72hvsC04h.lo <- proc_DEG(DEGs.IL25_C72hvsC04h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+IL25_C72hvsC48h.hi <- proc_DEG(DEGs.IL25_C72hvsC48h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+IL25_C72hvsC48h.lo <- proc_DEG(DEGs.IL25_C72hvsC48h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+
+C04h_IL25.hi <- proc_DEG(DEGs.C04h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+C04h_nonIL25.hi <- proc_DEG(DEGs.C04h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+C48h_IL25.hi <- proc_DEG(DEGs.C48h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+C48h_nonIL25.hi <- proc_DEG(DEGs.C48h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+C72h_IL25.hi <- proc_DEG(DEGs.C72h,p.cut = p.cut,FC.cut = FC.cut1,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene 
+C72h_nonIL25.hi <- proc_DEG(DEGs.C48h,p.cut = p.cut,FC.cut = FC.cut2,abs = FALSE,
+                                  mat_cut = matt_pc.cut)$gene
+```
+
+
+##### IL25 vs nonIL25      
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(C04h_IL25.hi=C04h_IL25.hi,
+                C04h_nonIL25.hi=C04h_nonIL25.hi,
+                C48h_IL25.hi=C48h_IL25.hi,
+                C48h_nonIL25.hi=C48h_nonIL25.hi,
+                C72h_IL25.hi=C72h_IL25.hi,
+                C72h_nonIL25.hi=C72h_nonIL25.hi),
+           zcolor = 'style', 
+           ggplot = T) + labs( title="IL25_vs_nonIL25.C04_48_72h  \n(padj<0.01, FC>2, TPM>10 in at least one condition)")+ theme(plot.title = element_text(size=12))
+```
+
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(C04h_DEGs=c(C04h_IL25.hi,C04h_nonIL25.hi),
+                C48h_DEGs=c(C48h_IL25.hi,C48h_nonIL25.hi),
+                C72h_DEGs=c(C72h_IL25.hi,C72h_nonIL25.hi)),
+           zcolor = 'style',
+           ggplot = T) + labs( title="IL25_vs_nonIL25.C04_48_72h \n(padj<0.01, FC>2, TPM>10 in at least one condition)")+ theme(plot.title = element_text(size=12))
+```
+
+##### IL25                  
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(IL25_C48hvsC04h.hi=IL25_C48hvsC04h.hi,
+                IL25_C48hvsC04h.lo=IL25_C48hvsC04h.lo,
+                IL25_C72hvsC04h.hi=IL25_C72hvsC04h.hi,
+                IL25_C72hvsC04h.lo=IL25_C72hvsC04h.lo,
+                IL25_C72hvsC48h.hi=IL25_C72hvsC48h.hi,
+                IL25_C72hvsC48h.lo=IL25_C72hvsC48h.lo),
+           zcolor = 'style',
+           ggplot = T) + labs( title="DEGs of IL25")+ theme(plot.title = element_text(size=16))
+```
+
+##### nonIL25                  
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(nonIL25_C48hvsC04h.hi=nonIL25_C48hvsC04h.hi,
+                nonIL25_C48hvsC04h.lo=nonIL25_C48hvsC04h.lo,
+                nonIL25_C72hvsC04h.hi=nonIL25_C72hvsC04h.hi,
+                nonIL25_C72hvsC04h.lo=nonIL25_C72hvsC04h.lo,
+                nonIL25_C72hvsC48h.hi=nonIL25_C72hvsC48h.hi,
+                nonIL25_C72hvsC48h.lo=nonIL25_C72hvsC48h.lo),
+           zcolor = 'style',
+           ggplot = T) + labs( title="DEGs of nonIL25")+ theme(plot.title = element_text(size=16))
+```
+
+##### C48h vs C04h          
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(nonIL25_C48hvsC04h.hi=nonIL25_C48hvsC04h.hi,
+                nonIL25_C48hvsC04h.lo=nonIL25_C48hvsC04h.lo,
+                IL25_C48hvsC04h.hi=IL25_C48hvsC04h.hi,
+                IL25_C48hvsC04h.lo=IL25_C48hvsC04h.lo),
+           zcolor = 'style',
+           ggplot = T) + labs( title="DEGs of 'C48h vs C04h', nonIL25/Il25 ")+ theme(plot.title = element_text(size=16))
+```
+
+
+##### C72h vs C04h          
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(nonIL25_C72hvsC04h.hi=nonIL25_C72hvsC04h.hi,
+                nonIL25_C72hvsC04h.lo=nonIL25_C72hvsC04h.lo,
+                IL25_C72hvsC04h.hi=IL25_C72hvsC04h.hi,
+                IL25_C72hvsC04h.lo=IL25_C72hvsC04h.lo),
+           zcolor = 'style',
+           ggplot = T) + labs( title="DEGs of 'C72h vs C04h', nonIL25/Il25 ")+ theme(plot.title = element_text(size=16))
+```
+
+##### C72h vs C48h          
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(nonIL25_C72hvsC48h.hi=nonIL25_C72hvsC48h.hi,
+                nonIL25_C72hvsC48h.lo=nonIL25_C72hvsC48h.lo,
+                IL25_C72hvsC48h.hi=IL25_C72hvsC48h.hi,
+                IL25_C72hvsC48h.lo=IL25_C72hvsC48h.lo),
+           zcolor = 'style',
+           ggplot = T) + labs( title="DEGs of 'C72h vs C48h', nonIL25/Il25 ")+ theme(plot.title = element_text(size=16))
+```
+
+#### merged DEGs            
+
+```{r}
+DEGs.nonIL25_m <- unique(c(nonIL25_C48hvsC04h.hi,
+                           nonIL25_C48hvsC04h.lo,
+                           nonIL25_C72hvsC04h.hi,
+                           nonIL25_C72hvsC04h.lo,
+                           nonIL25_C72hvsC48h.hi,
+                           nonIL25_C72hvsC48h.lo))
+DEGs.IL25_m <- unique(c(IL25_C48hvsC04h.hi,
+                        IL25_C48hvsC04h.lo,
+                        IL25_C72hvsC04h.hi,
+                        IL25_C72hvsC04h.lo,
+                        IL25_C72hvsC48h.hi,
+                        IL25_C72hvsC48h.lo))
+DEGs.times_m <- unique(c(C04h_IL25.hi,C04h_nonIL25.hi,
+                                   C48h_IL25.hi,C48h_nonIL25.hi,
+                                   C72h_IL25.hi,C72h_nonIL25.hi))
+```
+
+```{r echo=FALSE, fig.height=5, fig.width=5}
+venn::venn(list(DEGs.nonIL25_merged=DEGs.nonIL25_m,
+                DEGs.IL25_merged=DEGs.IL25_m),
+           zcolor = 'style',
+           ggplot = T) + labs( title="merged DEGs, nonIL25/IL25 ")+ theme(plot.title = element_text(size=16))
+```
+
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(IL25_vs_nonIL25.times=DEGs.times_m,
+                DEGs_times.nonIL25_merged=DEGs.nonIL25_m,
+                DEGs_times.IL25_merged=DEGs.IL25_m),
+           zcolor = 'style', 
+           ggplot = T) + 
+  labs( title="DEGs comparison \n(padj<0.01, FC>2, TPM>10 in at least one condition)")+ 
+  theme(plot.title = element_text(size=12))
+```
+
+
+```{r  echo=FALSE, fig.height=5, fig.width=8}
+## upset plot, 0529
+library(UpSetR)
+
+upset(fromList(list(IL25_vs_nonIL25.times=DEGs.times_m,
+                DEGs_times.nonIL25_merged=DEGs.nonIL25_m,
+                DEGs_times.IL25_merged=DEGs.IL25_m)),
+      order.by = 'freq', nsets = 6, point.size=3.5, line.size =1, text.scale = 2)
+
+
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_1.merged_DEGs.pdf",
+    width = 7,
+    height = 7)
+
+venn::venn(list(IL25_vs_nonIL25.times=DEGs.times_m,
+                DEGs_times.nonIL25_merged=DEGs.nonIL25_m,
+                DEGs_times.IL25_merged=DEGs.IL25_m),
+           zcolor = 'style', 
+           ggplot = T, box = F) + 
+  labs( title="DEGs comparison \n(padj<0.01, FC>2, TPM>10 in at least one condition)")+ 
+  theme(plot.title = element_text(size=12))
+
+dev.off()
+
+
+pdf("patterns/adv2_1.merged_DEGs.upset.pdf",
+    width = 8,
+    height = 5)
+
+upset(fromList(list(IL25_vs_nonIL25.times=DEGs.times_m,
+                DEGs_times.nonIL25_merged=DEGs.nonIL25_m,
+                DEGs_times.IL25_merged=DEGs.IL25_m)),
+      order.by = 'freq', nsets = 6, point.size=3.5, line.size =1, text.scale = 2)
+dev.off()
+```
+
+
+filtering method:              
+          
+to find specific patterns for IL25+/- across time points, define:            
+    i. must have difference of 'IL25 vs nonIL25' in at least one time point;           
+   ii. must have different trend across 'C04h-C48h-C72h' for IL25/nonIL25.        
+        
+        
+so we have certain candidate DEGs in           
+   a. 'IL25_vs_nonIL25.times' and 'DEGs_times.nonIL25_merged' but not in 'DEGs_tines.IL25_merged';            
+   b. 'IL25_vs_nonIL25.times' and 'DEGs_times.IL25_merged' but not in 'DEGs_tines.nonIL25_merged'.         
+       
+       
+for overlapped DEGs in three-overlap geneset,            
+to find DEGs with different trend as candidates.           
+
+        
+#### different trend                  
+        
+##### set a vector to check these DEGs              
+      
+each gene, if in:             
+  c(C48hvsC04h.hi, C48hvsC04h.lo, C72hvsC04h.hi, C72hvsC04h.lo, C72hvsC48h.hi, C72hvsC48h.lo)               
+  if the IL25-vector == nonIL25-vector, then this gene is not specific which would be excluded         
+         
+
+                
+```{r}
+DEGs.IL25vsnon.vstimes.m <- intersect(intersect(DEGs.times_m, DEGs.nonIL25_m), DEGs.IL25_m)
+DEGs.IL25vsnon.vstimes_nonIL25.m <- setdiff(intersect(DEGs.times_m, DEGs.nonIL25_m),DEGs.IL25vsnon.vstimes.m)
+DEGs.IL25vsnon.vstimes_IL25.m <- setdiff(intersect(DEGs.times_m, DEGs.IL25_m),DEGs.IL25vsnon.vstimes.m)
+
+DEGs.IL25vsnon.vstimes.all <- c(DEGs.IL25vsnon.vstimes.m,
+                                DEGs.IL25vsnon.vstimes_IL25.m,
+                                DEGs.IL25vsnon.vstimes_nonIL25.m)
+```
+
+```{r}
+DEGs2vector <- function(DEGs,DEG1_1=IL25_C48hvsC04h.hi,
+                             DEG1_2=IL25_C48hvsC04h.lo,
+                             DEG1_3=IL25_C72hvsC04h.hi,
+                             DEG1_4=IL25_C72hvsC04h.lo,
+                             DEG1_5=IL25_C72hvsC48h.hi,
+                             DEG1_6=IL25_C72hvsC48h.lo,
+                             DEG2_1=nonIL25_C48hvsC04h.hi,
+                             DEG2_2=nonIL25_C48hvsC04h.lo,
+                             DEG2_3=nonIL25_C72hvsC04h.hi,
+                             DEG2_4=nonIL25_C72hvsC04h.lo,
+                             DEG2_5=nonIL25_C72hvsC48h.hi,
+                             DEG2_6=nonIL25_C72hvsC48h.lo){
+    v1 <- c(DEGs[1] %in% DEG1_1,
+              DEGs[1] %in% DEG1_2,
+              DEGs[1] %in% DEG1_3,
+              DEGs[1] %in% DEG1_4,
+              DEGs[1] %in% DEG1_5,
+              DEGs[1] %in% DEG1_6)
+    v2 <- c(DEGs[1] %in% DEG2_1,
+              DEGs[1] %in% DEG2_2,
+              DEGs[1] %in% DEG2_3,
+              DEGs[1] %in% DEG2_4,
+              DEGs[1] %in% DEG2_5,
+              DEGs[1] %in% DEG2_6)
+    ret <- list(inIL25=v1,
+                innonIL25=v2,
+                identical=c(identical(v1,v2)))
+    for(i in 2:length(DEGs)){
+      v1 <- c(DEGs[i] %in% DEG1_1,
+              DEGs[i] %in% DEG1_2,
+              DEGs[i] %in% DEG1_3,
+              DEGs[i] %in% DEG1_4,
+              DEGs[i] %in% DEG1_5,
+              DEGs[i] %in% DEG1_6)
+      v2 <- c(DEGs[i] %in% DEG2_1,
+              DEGs[i] %in% DEG2_2,
+              DEGs[i] %in% DEG2_3,
+              DEGs[i] %in% DEG2_4,
+              DEGs[i] %in% DEG2_5,
+              DEGs[i] %in% DEG2_6)
+      ret$inIL25 <- rbind(ret$inIL25,v1)
+      ret$innonIL25 <- rbind(ret$innonIL25,v2)
+      ret$identical <- c(ret$identical,c(identical(v1,v2)))
+    }
+    ret$specific <- !(ret$identical)
+    rownames(ret$inIL25) <- rownames(ret$innonIL25) <- names(ret$identical) <- names(ret$specific) <- DEGs
+    return(ret)
+}
+```
+
+
+```{r}
+mat_spe.IL25 <- DEGs2vector(DEGs.IL25vsnon.vstimes_IL25.m)
+mat_spe.nonIL25 <- DEGs2vector(DEGs.IL25vsnon.vstimes_nonIL25.m)
+mat_spe.overlap3 <- DEGs2vector(DEGs.IL25vsnon.vstimes.m)
+```
+
+##### check the decision matrix           
+```{r}
+lapply(mat_spe.IL25,head)
+```
+
+```{r}
+lapply(mat_spe.nonIL25,head)
+```
+
+```{r}
+lapply(mat_spe.overlap3,head)
+```
+
+##### stat              
+```{r}
+#
+sum(mat_spe.IL25$identical)
+sum(mat_spe.nonIL25$identical)
+sum(mat_spe.overlap3$identical)
+```
+
+```{r}
+#
+sum(mat_spe.IL25$specific)
+sum(mat_spe.nonIL25$specific)
+sum(mat_spe.overlap3$specific)
+```
+
+```{r}
+sum(sum(mat_spe.IL25$specific),
+    sum(mat_spe.nonIL25$specific),
+    sum(mat_spe.overlap3$specific))
+```
+      
+      
+```{r eval=FALSE, include=FALSE}
+write.table(cbind.data.frame(inIL25=rownames(mat_spe.IL25$inIL25),
+                             mat_spe.IL25$inIL25,
+                             innonIL25=rownames(mat_spe.IL25$innonIL25),
+                             mat_spe.IL25$innonIL25,
+                             identical=mat_spe.IL25$identical,
+                             specific=mat_spe.IL25$specific),
+            "patterns/decision_matrix/adv2_decision.overlap_IL25.csv",
+            col.names = T, row.names = F, sep = ",", quote = F)
+
+write.table(cbind.data.frame(inIL25=rownames(mat_spe.nonIL25$inIL25),
+                             mat_spe.nonIL25$inIL25,
+                             innonIL25=rownames(mat_spe.nonIL25$innonIL25),
+                             mat_spe.nonIL25$innonIL25,
+                             identical=mat_spe.nonIL25$identical,
+                             specific=mat_spe.nonIL25$specific),
+            "patterns/decision_matrix/adv2_decision.overlap_nonIL25.csv",
+            col.names = T, row.names = F, sep = ",", quote = F)
+
+write.table(cbind.data.frame(inIL25=rownames(mat_spe.overlap3$inIL25),
+                             mat_spe.overlap3$inIL25,
+                             innonIL25=rownames(mat_spe.overlap3$innonIL25),
+                             mat_spe.overlap3$innonIL25,
+                             identical=mat_spe.overlap3$identical,
+                             specific=mat_spe.overlap3$specific),
+            "patterns/decision_matrix/adv2_decision.overlap3.csv",
+            col.names = T, row.names = F, sep = ",", quote = F)
+```
+      
+      
+      
+#### candidate DEGs             
+         
+
+```{r}
+gene_spe <- function(mat_spe,identical=TRUE){
+  if(identical==TRUE){
+    genes <- names(mat_spe$identical)[mat_spe$identical]
+  }else{
+    genes <- names(mat_spe$specific)[mat_spe$specific]
+  }
+}
+```
+
+```{r}
+deg_spe.IL25 <- gene_spe(mat_spe.IL25, identical = F)
+deg_spe.nonIL25 <- gene_spe(mat_spe.nonIL25, identical = F)
+deg_spe.ol3 <- gene_spe(mat_spe.overlap3, identical = F)
+deg_ide.ol3 <- gene_spe(mat_spe.overlap3, identical = T)
+```
+
+
+```{r echo=FALSE, fig.height=8, fig.width=6}
+pheatmap::pheatmap(log2(matt_pc.cut[deg_spe.ol3,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12),
+                   main=paste0("zscore, 'overlap3' specific  \n",length(deg_spe.ol3),
+                               " of ",length(c(deg_spe.ol3,deg_ide.ol3))))
+```
+
+```{r eval=FALSE, include=FALSE}
+color.test <- colorRampPalette(
+    c(
+      "#03047F", # deep blue
+      "white",
+      "#CC2627"  # deep red
+    )
+  )(100)
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_2.filt_DEGs.overlap3_specific.pdf",
+    width = 6,
+    height = 8)
+
+pheatmap::pheatmap(log2(matt_pc.cut[deg_spe.ol3,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12), color = color.test,
+                   main=paste0("zscore, 'overlap3' specific  \n",length(deg_spe.ol3),
+                               " of ",length(c(deg_spe.ol3,deg_ide.ol3))))
+
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=8, fig.width=6}
+pheatmap::pheatmap(log2(matt_pc.cut[deg_ide.ol3,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12),
+                   main=paste0("zscore, 'overlap3' identical  \n",length(deg_ide.ol3),
+                               " of ",length(c(deg_spe.ol3,deg_ide.ol3))))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_2.filt_DEGs.overlap3_identical.pdf",
+    width = 6,
+    height = 8)
+
+pheatmap::pheatmap(log2(matt_pc.cut[deg_ide.ol3,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12), color = color.test,
+                   main=paste0("zscore, 'overlap3' identical  \n",length(deg_ide.ol3),
+                               " of ",length(c(deg_spe.ol3,deg_ide.ol3))))
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=8, fig.width=6}
+pheatmap::pheatmap(log2(matt_pc.cut[deg_spe.IL25,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12),
+                   main=paste0("zscore, 'IL25' specific DEGs  \n total ",length(deg_spe.IL25)))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_2.filt_DEGs.overlap_IL25.pdf",
+    width = 6,
+    height = 8)
+
+pheatmap::pheatmap(log2(matt_pc.cut[deg_spe.IL25,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12), color = color.test,
+                   main=paste0("zscore, 'IL25' specific DEGs  \n total ",length(deg_spe.IL25)))
+
+dev.off()
+```
+
+```{r echo=FALSE, fig.height=4, fig.width=6}
+pheatmap::pheatmap(log2(matt_pc.cut[deg_spe.nonIL25,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12),
+                   main=paste0("zscore, 'nonIL25' specific DEGs  \n total ",length(deg_spe.nonIL25)))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_2.filt_DEGs.overlap_nonIL25.pdf",
+    width = 6,
+    height = 4)
+
+pheatmap::pheatmap(log2(matt_pc.cut[deg_spe.nonIL25,c(idx.IL25_C04h,
+                                                  idx.IL25_C48h,
+                                                  idx.IL25_C72h,
+                                                  idx.nonIL25_C04h,
+                                                  idx.nonIL25_C48h,
+                                                  idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = T, cluster_cols = F, scale = 'row',
+                   gaps_col = c(12), color = color.test,
+                   main=paste0("zscore, 'nonIL25' specific DEGs  \n total ",length(deg_spe.nonIL25)))
+
+dev.off()
+```
+
+### specific patterns        
+
+##### using 'IL25-specific' and 'nonIL25-specific' and '3-overlap with different trend' DEGs to get different gene expression patterns through hierarchical clustering                
+
+how to find the specific patterns ? checked           
+
+a. https://github.com/BaselAbujamous/clust             
+b. http://www.bioconductor.org/packages/release/bioc/html/Mfuzz.html                
+c. manual way in R, as https://tavareshugo.github.io/data-carpentry-rnaseq/04b_rnaseq_clustering.html         
+      
+by comparison of their results, determine to choose the final one.             
+
+#### count scaled score             
+
+##### matrix to cluster patterns         
+          
+treating nonIL25_C04h as IL25_C00h to 4 time points for IL25 patterns            
+
+```{r}
+DEGs.adv2 <- c(deg_spe.IL25,
+              deg_spe.nonIL25,
+              deg_spe.ol3)
+
+matt_pc.adv2 <- cbind(DEGs.adv2, round(log2(matt_pc.cut[DEGs.adv2,c(idx.nonIL25_C04h,
+                                                                    idx.IL25_C04h,
+                                                                    idx.IL25_C48h,
+                                                                    idx.IL25_C72h)]+1),4))
+colnames(matt_pc.adv2)[1] <- "gene"
+```
+
+```{r paged.print=FALSE}
+dim(matt_pc.adv2)
+head(matt_pc.adv2)
+```
+
+##### mean zscore based on this matrix      
+
+```{r paged.print=FALSE}
+cnts <- c(rep("C00h_IL25",4),
+          rep("C04h_IL25",4),
+          rep("C48h_IL25",4),
+          rep("C72h_IL25",4))
+reps <- c(rep(1:4,4))
+sample_info <- data.frame(sample=colnames(matt_pc.adv2[,-1]),
+                          condition=cnts,
+                          batch=rep(c(rep("IL25",4)),4),
+                          time=c(rep("C00h",4),rep("C04h",4),rep("C48h",4),rep("C72h",4)),
+                          replicate = reps)
+sample_info
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+trans_tpm_mean.adv2 <- matt_pc.adv2 %>%
+  pivot_longer(cols = colnames(matt_pc.adv2[,-1]),
+               names_to = "sample",
+               values_to = "log2tpm") %>%
+  full_join(sample_info, by = ("sample")) %>%
+  #filter(gene %in% rownames(matt_pc.cut)) %>%
+  group_by(gene) %>%
+  mutate(tpm_scaled = (log2tpm - mean(log2tpm))/sd(log2tpm)) %>%
+  group_by(gene, batch, time) %>%
+  summarise(mean_tpm_scaled = mean(tpm_scaled),
+            nrep = n()) %>%
+  ungroup()
+
+head(trans_tpm_mean.adv2,12)
+```
+
+
+
+#### hclust         
+
+```{r include=FALSE}
+show_clust <- function(clust_ret, return_gap=FALSE){
+  idx <- unique(clust_ret)
+  clust_ret <- paste0("cluster",clust_ret)
+  idx <- paste0("cluster",idx)
+  if(return_gap==FALSE){
+    table(clust_ret)[idx]
+  }else{
+    gap <- table(clust_ret)[idx]
+    gaps <- NULL
+    gaps_i <- 0
+    for(iii in 1:(length(gap)-1)){
+      gaps_i <- gaps_i + gap[iii]
+      gaps <- c(gaps,gaps_i)
+    }
+    return(gaps)
+  }
+  
+}
+
+```
+
+```{r}
+gene_dist.adv2 <- dist(zscore_mat(matt_pc.adv2[,-1]))
+```
+        
+##### range to select a suitable 'Height' to get well separated patterns                    
+        
+```{r}
+h.adv2 <- 18
+gene_hclust.adv2 <- hclust(gene_dist.adv2,method = 'ward.D2')
+
+plot(gene_hclust.adv2, labels = FALSE)
+abline(h = h.adv2, col = "brown", lwd = 2)
+```       
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_3.hclust_dendrogram.pdf",
+    width = 6,
+    height = 4)
+
+plot(gene_hclust.adv2, labels = FALSE)
+abline(h = h.adv2, col = "brown", lwd = 2)
+text(0.5,23,"h=18", cex = 0.65)
+
+dev.off()
+``` 
+ 
+```{r}
+show_clust(cutree(gene_hclust.adv2,h=h.adv2))
+```        
+        
+```{r include=FALSE, paged.print=FALSE}
+gene_cluster.adv2 <- cutree(gene_hclust.adv2, h = h.adv2) %>%
+  enframe() %>%
+  rename(gene = name, cluster= value)
+
+head(gene_cluster.adv2)
+```        
+        
+```{r include=FALSE, paged.print=FALSE}
+trans_tpm_cluster.adv2  <- trans_tpm_mean.adv2 %>% 
+  inner_join(gene_cluster.adv2, by = "gene")
+
+head(trans_tpm_cluster.adv2)
+```
+
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2 %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))
+```
+        
+#### manually sorted patterns          
+      
+##### each pattern, give it to the time point which has the biggest median score;                               
+##### for genes in each pattern of each time point, sort by score decreasingly.           
+
+
+        
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+trans_tpm_cluster.adv2.median <- trans_tpm_cluster.adv2 %>%
+  group_by(cluster,time) %>%
+  summarize(median_score=median(mean_tpm_scaled)) %>% 
+  reshape2::dcast(cluster~time)
+
+reorder_scalemat <- function(scale_mat){
+  scale_mat1 <- scale_mat[scale_mat[,2]==rowMaxs(as.matrix(scale_mat[,2:5])),] %>% 
+    arrange(desc(colnames(scale_mat)[2]))
+  scale_mat2 <- scale_mat[scale_mat[,3]==rowMaxs(as.matrix(scale_mat[,2:5])),] %>% 
+    arrange(desc(colnames(scale_mat)[3]))
+  scale_mat3 <- scale_mat[scale_mat[,4]==rowMaxs(as.matrix(scale_mat[,2:5])),] %>% 
+    arrange(desc(colnames(scale_mat)[4]))
+  scale_mat4 <- scale_mat[scale_mat[,5]==rowMaxs(as.matrix(scale_mat[,2:5])),] %>% 
+    arrange(desc(colnames(scale_mat)[5]))
+  reorder_list <- list(C00h=scale_mat1$cluster,
+                C04h=scale_mat2$cluster,
+                C48h=scale_mat3$cluster,
+                C72h=scale_mat4$cluster)
+  return(reorder_list)
+}
+reorder_cluster <- reorder_scalemat(scale_mat = trans_tpm_cluster.adv2.median)
+
+trans_tpm_cluster.adv2.median[unlist(reorder_cluster) ,]
+
+```
+        
+```{r}
+reorder_cluster 
+```
+
+```{r}
+head(trans_tpm_cluster.adv2)
+```
+
+```{r}
+names(reorder_cluster )
+```
+
+
+```{r}
+# reorder_gene
+reorder_gene <- list(C00h=list(),
+                     C04h=list(),
+                     C48h=list(),
+                     C72h=list())
+for(i in 1:4){
+  for(j in 1:length(reorder_cluster[[i]])){
+    if(j==1){
+      reorder_gene[[i]] <- list((trans_tpm_cluster.adv2 %>% filter(time==names(reorder_cluster)[i],
+                                  cluster==reorder_cluster[[i]][j]) %>%
+                                  arrange(desc(mean_tpm_scaled)))$gene)
+    }else{
+      reorder_gene[[i]] <- c(reorder_gene[[i]],list((trans_tpm_cluster.adv2 %>% filter(time==names(reorder_cluster)[i],
+                                  cluster==reorder_cluster[[i]][j]) %>%
+                                  arrange(desc(mean_tpm_scaled)))$gene))
+    }
+    
+  }
+}
+
+lapply(reorder_gene,function(x) lapply(x,head))
+#unlist(reorder_gene)
+```
+
+
+        
+```{r}
+trans_tpm_cluster.adv2.reorder <- trans_tpm_cluster.adv2
+
+trans_tpm_cluster.adv2.reorder$cluster <- factor(trans_tpm_cluster.adv2.reorder$cluster, 
+                                                 levels = unlist(reorder_cluster))
+```
+        
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.reorder %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))
+```        
+        
+```{r}
+show_clust(cutree(gene_hclust.adv2,h=h.adv2))[paste0("cluster",unlist(reorder_cluster))]
+```  
+
+```{r eval=FALSE, include=FALSE}
+#load("final_2.p0.01_FC2.RData")
+#load("final_2.p0.01_FC2.mod0529.RData")
+```
+        
+        
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.reorder %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2)) + theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+```          
+        
+
+##### 202205mod          
+
+```{r}
+#trans_tpm_cluster.adv2.reorder
+trans_tpm_cluster.adv2.202205mod <- trans_tpm_cluster.adv2.reorder
+trans_tpm_cluster.adv2.202205mod$cluster <- factor(as.character(trans_tpm_cluster.adv2.202205mod$cluster),
+                                                   levels = c(6,1,4,3,10,7,9,8,2,5))
+```
+
+```{r}
+levels(trans_tpm_cluster.adv2.reorder$cluster)
+levels(trans_tpm_cluster.adv2.202205mod$cluster)
+```
+```{r}
+head(trans_tpm_cluster.adv2.202205mod,10)
+```
+
+
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.202205mod %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2)) + theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+```  
+        
+        
+        
+```{r eval=FALSE, include=FALSE}
+ptn.raw <- trans_tpm_cluster.adv2 %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))
+
+ptn.reorder <- trans_tpm_cluster.adv2.reorder %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))
+
+ggsave("patterns/adv2_4.pattern_raw.pdf",
+       plot = ptn.raw,
+       width = 3.6,
+       height = 9)
+
+ggsave("patterns/adv2_4.pattern_reordered.pdf",
+       plot = ptn.reorder,
+       width = 3.6,
+       height = 9)
+
+
+## 20220406mod         
+ptn.reorder.mod <- trans_tpm_cluster.adv2.reorder %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ggsave("figures_20220406mod/adv2_4.pattern_reordered.pdf",
+       plot = ptn.reorder.mod,
+       width = 3.6,
+       height = 9)
+
+
+## 202205mod
+##     reorder the patterns as 6, 1, 4, 3, 10, 7, 9, 8, 2, 5
+ptn.202205.mod <- trans_tpm_cluster.adv2.202205mod %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene)) +
+  geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ggsave("figures_20220429mod/adv2_4.pattern_202205mod.pdf",
+       plot = ptn.202205.mod,
+       width = 3.6,
+       height = 9)
+
+
+```         
+        
+```{r include=FALSE}
+# IL25 dependant gene-cluster
+rownames(gene_cluster.adv2) <- gene_cluster.adv2$gene
+genes.plot.adv2 <- gene_cluster.adv2[unlist(reorder_gene),]
+unique(genes.plot.adv2$cluster)
+```        
+
+```{r}
+head(genes.plot.adv2)
+```
+
+
+```{r}
+## 2022mod for genes.plot.adv2
+genes.plot.adv2.202205mod <- rbind(genes.plot.adv2 %>% filter(cluster == 6),
+                                   genes.plot.adv2 %>% filter(cluster == 1),
+                                   genes.plot.adv2 %>% filter(cluster == 4),
+                                   genes.plot.adv2 %>% filter(cluster == 3),
+                                   genes.plot.adv2 %>% filter(cluster == 10),
+                                   genes.plot.adv2 %>% filter(cluster == 7),
+                                   genes.plot.adv2 %>% filter(cluster == 9),
+                                   genes.plot.adv2 %>% filter(cluster == 8),
+                                   genes.plot.adv2 %>% filter(cluster == 2),
+                                   genes.plot.adv2 %>% filter(cluster == 5))
+unique(genes.plot.adv2.202205mod$cluster)
+```
+
+
+        
+```{r echo=FALSE, fig.height=9.6, fig.width=6}
+pheatmap::pheatmap(log2(matt_pc.cut[genes.plot.adv2.202205mod$gene,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h,
+                                                           idx.nonIL25_C48h,
+                                                           idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust(genes.plot.adv2.202205mod$cluster,return_gap = TRUE),
+                   main=paste0("zscore, adv2 \n",length(genes.plot.adv2.202205mod$gene)," DEGs kept"))
+```        
+        
+```{r echo=FALSE, fig.height=9.6, fig.width=6}
+pheatmap::pheatmap(log2(matt_pc.cut[genes.plot.adv2.202205mod$gene,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust(genes.plot.adv2.202205mod$cluster,return_gap = TRUE),
+                   main=paste0("zscore, adv2 \n",length(genes.plot.adv2.202205mod$gene)," DEGs kept"))
+```
+
+```{r}
+head(trans_tpm_cluster.adv2.202205mod)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+median.pattern.adv2_4.mod202205 <- trans_tpm_cluster.adv2.202205mod %>% 
+  select(cluster, time, mean_tpm_scaled) %>%
+  group_by(cluster, time) %>% 
+  summarize(median = median(mean_tpm_scaled)) %>%
+  reshape2::dcast(cluster~time)
+colnames(median.pattern.adv2_4.mod202205) <- c("cluster.manually_sorted","C00h.median","C04h.median","C48h.median","C72h.median")
+
+median.pattern.adv2_4.mod202205
+```
+
+
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_5.pattern_heatmap.pdf",
+    width = 6,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[unlist(reorder_gene),c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust(genes.plot.adv2$cluster,return_gap = TRUE),
+                   color = color.test,
+                   main=paste0("zscore, adv2 \n",length(genes.plot.adv2$gene)," DEGs kept"))
+
+dev.off()
+
+
+## 202205mod
+
+
+
+pdf("./figures_20220429mod/adv2_5.pattern_heatmap.202205mod.pdf",
+    width = 6,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[genes.plot.adv2.202205mod$gene,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust(genes.plot.adv2.202205mod$cluster,return_gap = TRUE),
+                   color = color.test,
+                   border_color = NA,
+                   main=paste0("zscore, adv2 \n",length(genes.plot.adv2.202205mod$gene)," DEGs kept"))
+
+dev.off()
+
+write.csv(data.frame(matt_pc.cut[genes.plot.adv2.202205mod$gene,
+                        c(idx.nonIL25_C04h,
+                          idx.nonIL25_C48h,
+                          idx.nonIL25_C72h,
+                          idx.IL25_C04h,
+                          idx.IL25_C48h,
+                          idx.IL25_C72h)],
+                       program=paste0("cluster",genes.plot.adv2.202205mod$cluster)),
+            "./figures_20220429mod/adv2_5.2_9.pattern_heatmap.tpm_matrix.csv")
+ 
+# 0529, in zscore order
+#   no need, already sorted by zscore order ! just save a zscore matrix 
+
+write.csv(data.frame(zscore_mat(matt_pc.cut[genes.plot.adv2.202205mod$gene,
+                        c(idx.nonIL25_C04h,
+                          #idx.nonIL25_C48h,
+                          #idx.nonIL25_C72h,
+                          idx.IL25_C04h,
+                          idx.IL25_C48h,
+                          idx.IL25_C72h)]),
+                       program=paste0("cluster",genes.plot.adv2.202205mod$cluster)),
+            "./figures_20220429mod/adv2_5.pattern_heatmap.zscore_matrix.csv")
+
+```
+
+#### each pattern run go/kegg enrichment                      
+
+```{r}
+reorder_cluster
+```
+
+```{r eval=FALSE, include=FALSE}
+clust.raw <- show_clust(cutree(gene_hclust.adv2,h=h.adv2))
+clust.reorder <- show_clust(cutree(gene_hclust.adv2,h=h.adv2))[paste0("cluster",unlist(reorder_cluster))]
+
+write.table(cbind.data.frame(raw=names(clust.raw),
+                             genecount1=t(clust.raw)[1,],
+                             "",
+                             reordered=names(clust.reorder),
+                             genecount2=t(clust.reorder)[1,],
+                             highest=c(rep("C00h",3),
+                                       rep("C04h",2),
+                                       rep("C48h",1),
+                                       rep("C72h",4))),
+            "patterns/adv2_4.pattern.csv",
+            col.names = T, row.names = F, sep = ",", quote = F)
+
+
+## 202205mod
+write.table(cbind.data.frame(raw=names(clust.raw),
+                             genecount1=t(clust.raw)[1,],
+                             "",
+                             #reordered=names(clust.reorder),
+                             #genecount2=t(clust.reorder)[1,],
+                             #highest=c(rep("C00h",3),
+                             #          rep("C04h",2),
+                             #          rep("C48h",1),
+                             #          rep("C72h",4)),
+                             "",
+                             median.pattern.adv2_4.mod202205,
+                             genecount2=t(clust.raw)[1,][c(6,1,4,3,10,7,9,8,2,5)]),
+            "figures_20220429mod/adv2_4.pattern_202205mod.median_mean_scaled_tpm.csv",
+            col.names = T, row.names = F, sep = ",", quote = F)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+write.table(reorder_gene$C00h[[1]],"patterns/go.adv2/list_C00h.p1.txt",
+            col.names = F, row.names = F, quote = F)
+write.table(reorder_gene$C00h[[2]],"patterns/go.adv2/list_C00h.p2.txt",
+            col.names = F, row.names = F, quote = F)
+write.table(reorder_gene$C00h[[3]],"patterns/go.adv2/list_C00h.p3.txt",
+            col.names = F, row.names = F, quote = F)
+
+write.table(reorder_gene$C04h[[1]],"patterns/go.adv2/list_C04h.p1.txt",
+            col.names = F, row.names = F, quote = F)
+write.table(reorder_gene$C04h[[2]],"patterns/go.adv2/list_C04h.p2.txt",
+            col.names = F, row.names = F, quote = F)
+
+
+write.table(reorder_gene$C48h[[1]],"patterns/go.adv2/list_C48h.p1.txt",
+            col.names = F, row.names = F, quote = F)
+
+
+
+write.table(reorder_gene$C72h[[1]],"patterns/go.adv2/list_C72h.p1.txt",
+            col.names = F, row.names = F, quote = F)
+write.table(reorder_gene$C72h[[2]],"patterns/go.adv2/list_C72h.p2.txt",
+            col.names = F, row.names = F, quote = F)
+write.table(reorder_gene$C72h[[3]],"patterns/go.adv2/list_C72h.p3.txt",
+            col.names = F, row.names = F, quote = F)
+write.table(reorder_gene$C72h[[4]],"patterns/go.adv2/list_C72h.p4.txt",
+            col.names = F, row.names = F, quote = F)
+
+
+write.table(paste(reorder_gene$C00h[[1]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C00h.p1",
+            col.names = F, row.names = F, quote = F)
+write.table(paste(reorder_gene$C00h[[2]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C00h.p2",
+            col.names = F, row.names = F, quote = F)
+write.table(paste(reorder_gene$C00h[[3]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C00h.p3",
+            col.names = F, row.names = F, quote = F)
+
+write.table(paste(reorder_gene$C04h[[1]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C04h.p1",
+            col.names = F, row.names = F, quote = F)
+write.table(paste(reorder_gene$C04h[[2]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C04h.p2",
+            col.names = F, row.names = F, quote = F)
+
+
+write.table(paste(reorder_gene$C48h[[1]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C48h.p1",
+            col.names = F, row.names = F, quote = F)
+
+
+
+write.table(paste(reorder_gene$C72h[[1]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C72h.p1",
+            col.names = F, row.names = F, quote = F)
+write.table(paste(reorder_gene$C72h[[2]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C72h.p2",
+            col.names = F, row.names = F, quote = F)
+write.table(paste(reorder_gene$C72h[[3]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C72h.p3",
+            col.names = F, row.names = F, quote = F)
+write.table(paste(reorder_gene$C72h[[4]],0,0,2, sep="\t"),"patterns/kegg.adv2/DEG_C72h.p4",
+            col.names = F, row.names = F, quote = F)
+```
+
+(run in linux shell with modified script)            
+
+#### split by DEG source          
+
+##### from C04h DEGs           
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% c(C04h_IL25.hi,C04h_nonIL25.hi)) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#93B5EC') +
+  geom_line(stat = "summary", fun = "median", colour = "pink", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in C04h DEGs, h= ",h.adv2))
+``` 
+
+```{r echo=FALSE, fig.height=9.6, fig.width=6}
+gene.adv2.C04h <- genes.plot.adv2.202205mod$gene[genes.plot.adv2.202205mod$gene %in% c(C04h_IL25.hi,C04h_nonIL25.hi)] 
+  
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.C04h,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C04h))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in C04h DEGs \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C04h))$gene),
+                               " DEGs kept"))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures_20220429mod/adv2_6.heatmap_C04h.202205mod.pdf",
+    width = 6,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.C04h,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C04h))$cluster,
+                                                          return_gap = TRUE), color = color.test,
+                   main=paste0("zscore, adv2 in C04h DEGs \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C04h))$gene),
+                               " DEGs kept"))
+
+dev.off()
+```
+
+
+##### from C48h DEGs           
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% c(C48h_IL25.hi,C48h_nonIL25.hi)) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#BF97E8') +
+  geom_line(stat = "summary", fun = "median", colour = "pink", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in C48h DEGs, h= ",h.adv2))
+``` 
+
+```{r echo=FALSE, fig.height=9.6, fig.width=6}
+gene.adv2.C48h <- genes.plot.adv2.202205mod$gene[genes.plot.adv2.202205mod$gene %in% c(C48h_IL25.hi,C48h_nonIL25.hi)] 
+  
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.C48h,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C48h))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in C48h DEGs \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C48h))$gene),
+                               " DEGs kept"))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures_20220429mod/adv2_6.heatmap_C48h.202205mod.pdf",
+    width = 6,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.C48h,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C48h))$cluster,
+                                                          return_gap = TRUE), color = color.test,
+                   main=paste0("zscore, adv2 in C48h DEGs \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C48h))$gene),
+                               " DEGs kept"))
+
+dev.off()
+```
+
+
+##### from C72h DEGs           
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% c(C72h_IL25.hi,C72h_nonIL25.hi)) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#B0E49A') +
+  geom_line(stat = "summary", fun = "median", colour = "pink", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in C72h DEGs, h= ",h.adv2))
+``` 
+
+```{r echo=FALSE, fig.height=9.6, fig.width=6}
+gene.adv2.C72h <- genes.plot.adv2.202205mod$gene[genes.plot.adv2.202205mod$gene %in% c(C72h_IL25.hi,C72h_nonIL25.hi)] 
+  
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.C72h,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C72h))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in C72h DEGs \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C72h))$gene),
+                               " DEGs kept"))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures_20220429mod/adv2_6.heatmap_C72h.2022mod.pdf",
+    width = 6,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.C72h,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C72h))$cluster,
+                                                          return_gap = TRUE), color = color.test,
+                   main=paste0("zscore, adv2 in C72h DEGs \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.C72h))$gene),
+                               " DEGs kept"))
+
+dev.off()
+```
+
+```{r eval=FALSE, include=FALSE}
+ptn.C04h <- trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% c(C04h_IL25.hi,C04h_nonIL25.hi)) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#93B5EC') +
+  geom_line(stat = "summary", fun = "median", colour = "pink", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in C04h DEGs, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+  
+ptn.C48h <- trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% c(C48h_IL25.hi,C48h_nonIL25.hi)) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#BF97E8') +
+  geom_line(stat = "summary", fun = "median", colour = "pink", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in C48h DEGs, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ptn.C72h <- trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% c(C72h_IL25.hi,C72h_nonIL25.hi)) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#B0E49A') +
+  geom_line(stat = "summary", fun = "median", colour = "pink", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in C72h DEGs, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+  
+
+ggsave("./figures_20220429mod/adv2_6.pattern_C04h.202205mod.pdf",
+       plot = ptn.C04h,
+       width = 3.6,
+       height = 9)
+
+ggsave("./figures_20220429mod/adv2_6.pattern_C48h.202205mod.pdf",
+       plot = ptn.C48h,
+       width = 3.6,
+       height = 9)
+
+ggsave("./figures_20220429mod/adv2_6.pattern_C72h.202205mod.pdf",
+       plot = ptn.C72h,
+       width = 3.6,
+       height = 9)
+```
+
+### overlap with GO:0003700            
+
+#### overlap of DEGs        
+
+```{r}
+go.0003700 <- read.table("../GO0003700.txt",header = TRUE, sep = "\t")
+```
+
+```{r}
+length(go.0003700$Gene.name)
+head(go.0003700$Gene.name)
+```
+
+
+```{r echo=FALSE, fig.height=7, fig.width=7}
+venn::venn(list(GO0003700=go.0003700$Gene.name,
+                specific_pattern=(gene_cluster.adv2$gene)),
+           zcolor = 'style',
+           ggplot = T) + labs( title="'DEGs with specific patterns' X GO:0003700 ")+ theme(plot.title = element_text(size=16))
+```
+ 
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_7.venn_xGO0003700.pdf",
+    width = 7,
+    height = 7)
+
+venn::venn(list(GO0003700=go.0003700$Gene.name,
+                specific_pattern=(gene_cluster.adv2$gene)), box = F,
+           zcolor = 'style',
+           ggplot = T) + labs( title="'DEGs with specific patterns' X GO:0003700 ")+ theme(plot.title = element_text(size=16))
+
+dev.off()
+``` 
+
+
+```{r echo=FALSE, fig.height=7, fig.width=7}
+# 20220406mod
+venn::venn(list(GO0003700=go.0003700$Gene.name,
+                specific_pattern=(gene_cluster.adv2$gene)),
+           zcolor = 'style',
+           ggplot = T) + labs( title="'DEGs with specific patterns' X GO:0003700 ")+ theme(plot.title = element_text(size=16))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+pdf("patterns/adv2_7.venn_xGO0003700.pdf",
+    width = 7,
+    height = 7)
+
+venn::venn(list(GO0003700=go.0003700$Gene.name,
+                specific_pattern=(gene_cluster.adv2$gene)), box = F,
+           zcolor = 'style',
+           ggplot = T) + labs( title="'DEGs with specific patterns' X GO:0003700 ")+ theme(plot.title = element_text(size=16))
+
+dev.off()
+```
+
+ 
+```{r}
+library(grid)
+```
+
+ 
+```{r fig.height=5, fig.width=5, message=FALSE, warning=FALSE}
+## 20220406mod
+grid::grid.newpage() 
+VennDiagram::draw.pairwise.venn(area1 = 1361,
+                                area2 = 935,
+                                cross.area = 52, 
+                                category = c("GO:0003700","Specific Pattern"),
+                                cex = c(3,1.5,2.4),
+                                cat.pos = c(0,0),
+                                cat.cex = c(1.6,1.6),
+                                cat.dist = c(0.05,0.05),
+                                ext.text = F,
+                                col = c("#FFB2B2","#B2B2FF"))
+```
+ 
+
+ 
+```{r eval=FALSE, include=FALSE}
+# 20220406mod
+pdf("figures_20220406mod/adv2_7.venn_xGO0003700.pdf",
+    width = 5,
+    height = 5)
+
+grid.newpage() 
+VennDiagram::draw.pairwise.venn(area1 = 1361,
+                                area2 = 935,
+                                cross.area = 52, 
+                                category = c("GO:0003700","Specific Pattern"),
+                                cex = c(3,1.5,2.4),
+                                cat.pos = c(0,0),
+                                cat.cex = c(1.6,1.6),
+                                cat.dist = c(0.05,0.05),
+                                ext.text = F,
+                                col = c("#FFB2B2","#B2B2FF"))
+
+dev.off()
+``` 
+
+
+
+ 
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2.reorder %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#ED6C41') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2))
+``` 
+
+```{r eval=FALSE, include=FALSE}
+ptn.go <- trans_tpm_cluster.adv2.reorder %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#ED6C41') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2))
+
+ggsave("patterns/adv2_7.pattern_go.pdf",
+       plot = ptn.go,
+       width = 3.6,
+       height = 9)
+
+```
+
+
+
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+# 20220406mod
+# 202205mod
+trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#ED6C41') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2),x="Time",y="Mean of Scaled TPM") + 
+  theme_bw() + theme(panel.grid=element_blank()) + labs()
+``` 
+
+```{r eval=FALSE, include=FALSE}
+# 20220406mod
+# 202205mod
+ptn.go.mod <- trans_tpm_cluster.adv2.202205mod %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#ED6C41') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2),x="Time",y="Mean of Scaled TPM") + 
+  theme_bw() + theme(panel.grid=element_blank())
+
+ggsave("figures_20220429mod/adv2_7.pattern_go.202205mod.pdf",
+       plot = ptn.go.mod,
+       width = 3.6,
+       height = 9)
+
+
+
+```
+
+
+
+
+```{r echo=FALSE, fig.height=9.6, fig.width=6}
+gene.adv2.go <- genes.plot.adv2.202205mod$gene[genes.plot.adv2.202205mod$gene %in% go.0003700$Gene.name] 
+  
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.go,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = T, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   fontsize_row = 8,
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in GO:0003700 \n",
+                               length((genes.plot.adv2 %>% filter(gene %in% gene.adv2.go))$gene),
+                               " DEGs kept"))
+```
+
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures_20220429mod/adv2_7.heatmap_go.202205mod.pdf",
+    width = 6,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.go,c(idx.nonIL25_C04h,
+                                                           idx.IL25_C04h,
+                                                           idx.IL25_C48h,
+                                                           idx.IL25_C72h)]+1),
+                   show_rownames = T, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   fontsize_row = 8, color = color.test,
+                   gaps_col = c(16),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in GO:0003700 \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$gene),
+                               " DEGs kept"))
+
+dev.off()
+
+
+write.csv(data.frame(matt_pc.cut[gene.adv2.go,
+                        c(idx.nonIL25_C04h,
+                          idx.nonIL25_C48h,
+                          idx.nonIL25_C72h,
+                          idx.IL25_C04h,
+                          idx.IL25_C48h,
+                          idx.IL25_C72h)],
+                       program=paste0("cluster",(genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster)),
+            "./figures_20220429mod/adv2_7.2_9.pattern_heatmap.tpm_matrix.csv")
+
+```
+
+
+```{r}
+show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster)
+```  
+
+```{r eval=FALSE, include=FALSE}
+clust.go <- show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster)
+
+write.table(cbind.data.frame(cluster=names(clust.go),
+                             genecount=t(clust.go)[1,]),
+            "./figures_20220429mod/adv2_7.pattern_go.202205mod.csv",
+            col.names = T, row.names = F, sep = ",", quote = F)
+
+write.table(gene.adv2.go,"./figures_20220429mod/adv2_7.genes_go.202205mod.txt",
+            col.names = F, row.names = F, quote = F)
+```
+
+## 0825 add,       
+##### to plot nonIL25 pattern/heatmap with same genelist/order                 
+
+```{r echo=FALSE, fig.height=9.6, fig.width=5}
+pheatmap::pheatmap(log2(matt_pc.cut[genes.plot.adv2.202205mod$gene,c(idx.nonIL25_C04h,
+                                                           idx.nonIL25_C48h,
+                                                           idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row',
+                   gaps_col = c(4,8),gaps_row = show_clust(genes.plot.adv2.202205mod$cluster,return_gap = TRUE),
+                   color = color.test,
+                   main=paste0("zscore, adv2 \n",length(genes.plot.adv2.202205mod$gene)," DEGs kept"))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures_20220429mod/adv2_9.heatmap.nonIL25.pdf",
+    width = 5,
+    height = 9.6)
+
+pheatmap::pheatmap(log2(matt_pc.cut[genes.plot.adv2.202205mod$gene,c(idx.nonIL25_C04h,
+                                                           idx.nonIL25_C48h,
+                                                           idx.nonIL25_C72h)]+1),
+                   show_rownames = F, cluster_rows = F, cluster_cols = F, scale = 'row', color = color.test,
+                   gaps_col = c(4,8),gaps_row = show_clust(genes.plot.adv2.202205mod$cluster,return_gap = TRUE),
+                   main=paste0("zscore, adv2 \n",length(genes.plot.adv2$gene)," DEGs kept"))
+
+dev.off()
+```
+
+
+```{r echo=FALSE, fig.height=9.6, fig.width=5}
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.go,c(idx.nonIL25_C04h,
+                                                           idx.nonIL25_C48h,
+                                                           idx.nonIL25_C72h)]+1),
+                   show_rownames = T, 
+                   cluster_rows = F, cluster_cols = F, scale = 'row',
+                   fontsize_row = 8,
+                   color = color.test,
+                   gaps_col = c(4,8),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in GO:0003700 \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$gene),
+                               " DEGs kept"))
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("./figures_20220429mod/adv2_9.heatmap_go.nonIL25.pdf",
+    width = 5,
+    height = 9.6)
+pheatmap::pheatmap(log2(matt_pc.cut[gene.adv2.go,c(idx.nonIL25_C04h,
+                                                           idx.nonIL25_C48h,
+                                                           idx.nonIL25_C72h)]+1),
+                   show_rownames = T, 
+                   cluster_rows = F, cluster_cols = F, scale = 'row',color = color.test,
+                   fontsize_row = 8,
+                   gaps_col = c(4,8),gaps_row = show_clust((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$cluster,
+                                                          return_gap = TRUE),
+                   main=paste0("zscore, adv2 in GO:0003700 \n",
+                               length((genes.plot.adv2.202205mod %>% filter(gene %in% gene.adv2.go))$gene),
+                               " DEGs kept"))
+
+dev.off()
+```
+
+```{r}
+matt_pc.adv2_nonIL25 <- cbind(DEGs.adv2, round(log2(matt_pc.cut[DEGs.adv2,c(idx.nonIL25_C04h,
+                                                                            idx.nonIL25_C48h,
+                                                                            idx.nonIL25_C72h)]+1),4))
+colnames(matt_pc.adv2_nonIL25)[1] <- "gene"
+```
+
+```{r paged.print=FALSE}
+dim(matt_pc.adv2_nonIL25)
+head(matt_pc.adv2_nonIL25)
+```
+
+##### mean zscore based on this matrix      
+
+```{r paged.print=FALSE}
+cnts_nonIL25 <- c(
+          #rep("C00h_IL25",4),
+          rep("C04h_nonIL25",4),
+          rep("C48h_nonIL25",4),
+          rep("C72h_nonIL25",4))
+reps_nonIL25 <- c(rep(1:4,3))
+sample_info_nonIL25 <- data.frame(sample=colnames(matt_pc.adv2_nonIL25[,-1]),
+                          condition=cnts_nonIL25,
+                          batch=rep(c(rep("nonIL25",4)),3),
+                          time=c(rep("C04h",4),rep("C48h",4),rep("C72h",4)),
+                          replicate = reps_nonIL25)
+sample_info_nonIL25
+```
+
+```{r eval=FALSE, include=FALSE}
+write.csv(sample_info, "./figures_20220429mod/sample_info.IL25.csv")
+write.csv(sample_info_nonIL25, "./figures_20220429mod/sample_info.nonIL25.csv")
+```
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+trans_tpm_mean.adv2_nonIL25 <- matt_pc.adv2_nonIL25 %>%
+  pivot_longer(cols = colnames(matt_pc.adv2_nonIL25[,-1]),
+               names_to = "sample",
+               values_to = "log2tpm") %>%
+  full_join(sample_info_nonIL25, by = ("sample")) %>%
+  #filter(gene %in% rownames(matt_pc.cut)) %>%
+  group_by(gene) %>%
+  mutate(tpm_scaled = (log2tpm - mean(log2tpm))/sd(log2tpm)) %>%
+  group_by(gene, batch, time) %>%
+  summarise(mean_tpm_scaled = mean(tpm_scaled),
+            nrep = n()) %>%
+  ungroup()
+
+head(trans_tpm_mean.adv2_nonIL25,12)
+```
+
+```{r include=FALSE, paged.print=FALSE}
+trans_tpm_cluster.adv2_nonIL25  <- trans_tpm_mean.adv2_nonIL25 %>% 
+  inner_join(gene_cluster.adv2, by = "gene")
+
+head(trans_tpm_cluster.adv2_nonIL25)
+```
+
+```{r}
+trans_tpm_cluster.adv2_nonIL25.202205mod <- trans_tpm_cluster.adv2_nonIL25
+
+trans_tpm_cluster.adv2_nonIL25.202205mod$cluster <- factor(trans_tpm_cluster.adv2_nonIL25.202205mod$cluster, 
+                                                 levels = levels(trans_tpm_cluster.adv2.202205mod$cluster) )
+```
+
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2_nonIL25.202205mod %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene), size = 0.01, colour="#646464") +
+  #geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+``` 
+
+
+```{r eval=FALSE, include=FALSE}
+ptn_nonIL25 <- trans_tpm_cluster.adv2_nonIL25.202205mod %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene), size = 0.01, colour="#646464") +
+  #geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) + 
+  labs(title = paste0("adv2, h= ",h.adv2))+ theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ggsave("./figures_20220429mod/adv2_9.pattern.nonIL25.202205mod.pdf",
+       plot = ptn_nonIL25,
+       width = 3.6,
+       height = 9)
+
+```
+
+```{r echo=FALSE, fig.height=18, fig.width=6.9}
+trans_tpm_cluster.adv2_nonIL25.202205mod %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#EC9172') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2)) +theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+``` 
+
+```{r eval=FALSE, include=FALSE}
+ptn_nonIL25.go <- trans_tpm_cluster.adv2_nonIL25.202205mod %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#EC9172') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2)) +
+  theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ggsave("./figures_20220429mod/adv2_9.pattern_go.nonIL25.202205mod.pdf",
+       plot = ptn_nonIL25.go,
+       width = 3.6,
+       height = 9)
+
+```
+
+
+```{r eval=FALSE, fig.height=18, fig.width=6.9, include=FALSE}
+# 20220406mod
+trans_tpm_cluster.adv2_nonIL25.reorder %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene), size = 0.01, colour="#646464") +
+  #geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2)) + theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+``` 
+
+
+```{r eval=FALSE, include=FALSE}
+# 20220406mod
+ptn_nonIL25.mod <- trans_tpm_cluster.adv2_nonIL25.reorder %>% 
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene), size = 0.01, colour="#646464") +
+  #geom_line(stat = "summary", fun = "median", colour = "brown", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2, h= ",h.adv2)) + theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ggsave("figures_20220406mod/adv2_9.pattern.nonIL25.202204mod.pdf",
+       plot = ptn_nonIL25.mod,
+       width = 3.6,
+       height = 9)
+
+```
+
+```{r eval=FALSE, fig.height=18, fig.width=6.9, include=FALSE}
+# 20220406mod
+trans_tpm_cluster.adv2_nonIL25.reorder %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#EC9172') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2)) + theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+``` 
+
+```{r eval=FALSE, include=FALSE}
+# 20220406mod
+ptn_nonIL25.go.mod <- trans_tpm_cluster.adv2_nonIL25.reorder %>% 
+  filter(gene %in% go.0003700$Gene.name) %>%
+  ggplot(aes(time, mean_tpm_scaled)) +
+  geom_line(aes(group = gene),colour = '#EC9172') +
+  #geom_line(stat = "summary", fun = "median", colour = "grey", size = 1.2, aes(group = 1)) +
+  facet_grid(cols = vars(batch), rows = vars(cluster)) +
+  labs(title = paste0("adv2 in GO:0003700, h= ",h.adv2)) + theme_bw() + theme(panel.grid=element_blank()) + labs(x="Time",y="Mean of Scaled TPM")
+
+ggsave("figures_20220406mod/adv2_9.pattern_go.nonIL25.pdf",
+       plot = ptn_nonIL25.go.mod,
+       width = 3.6,
+       height = 9)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

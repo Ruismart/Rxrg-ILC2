@@ -1,0 +1,425 @@
+---
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+           
+
+# diffbind - differential peaks           
+
+
+```{r message=FALSE, warning=FALSE}
+library(DiffBind)
+library(tidyverse)
+library(dplyr)
+library(ChIPseeker)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+library(ggplot2)
+library(ggpubr)
+```
+
+```{r}
+## define a function for quick volcano
+
+volpp <- function(res_diffbind, Font=12, volcanoy="p.value", Cnt="ILC2 ATAC KOvsWT", color=c("#CC0000","#BBBBBB","#2f5688")){
+  res_diffbind <- data.frame(res_diffbind)
+  res_diffbind$Group[res_diffbind$Fold>0] <- "up-regulated"
+  res_diffbind$Group[res_diffbind$Fold<0] <- "dn-regulated"
+  res_diffbind$Group[res_diffbind[,volcanoy]>0.05] <- "not-significant"
+  res_diffbind$Group <- factor(res_diffbind$Group, 
+                               levels = c("dn-regulated","not-significant","up-regulated"))
+  res_diffbind$logP <- -log10(res_diffbind$p.value)
+
+  maxX <- max(abs(range(res_diffbind$Fold)))*1.1
+
+volplot1 <- ggscatter(res_diffbind, x = "Fold", y = "logP", color = "Group",
+                       palette = color,size = 1.5,
+                       #label = "Genes",
+                       font.label = Font, repel = F,
+                       xlab = "diffbind Fold", ylab=paste0("-log10(",volcanoy,")")) + theme_classic() +
+    #geom_text_repel(mapping = aes(x = Ret$log2FoldChange, y = Ret$pp, label = Ret$Genes), max.overlaps = 50) +
+    guides(color=guide_legend(reverse=TRUE,title = Cnt)) +
+    #geom_vline(xintercept = c(-log2(FC),log2(FC)), linetype="dashed") +
+    geom_hline(yintercept = -log10(0.05), linetype="dashed") 
+volplot1
+
+}
+
+```
+
+
+## load bam and peaks        
+
+```{r}
+samples <- read.csv("samplesheet.cuttag_Rxrg_macs3_q0.25.csv")
+samples <- samples[c(4,5,1,2),]
+dbObj <- dba(sampleSheet = samples)
+```
+
+
+```{r paged.print=FALSE}
+samples
+```
+
+```{r paged.print=FALSE}    
+dbObj
+```
+
+
+```{r}
+# Affinity bind matrix
+dbObj <- dba.count(dbObj, bUseSummarizeOverlaps = TRUE, bParallel = TRUE)
+```
+
+### FRiP            
+
+```{r paged.print=FALSE}    
+dbObj
+```
+
+```{r eval=FALSE, include=FALSE}
+# 20220410mod
+sink(file = "20220410mod/final_cuttag_Rxrg.diff_peak.FRiP.csv",append = F, split = TRUE)
+```
+
+```{r}
+dbObj
+```
+
+```{r eval=FALSE, include=FALSE}
+sink()
+```
+
+
+### clustering           
+
+```{r fig.height=5, fig.width=5.6}
+dba.plotPCA(dbObj, label = NULL, dotSize = 3.2)
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("20220410mod/final_cuttag_Rxrg.diff_peak.PCA.pdf",
+    width = 5.6, height = 5)
+dba.plotPCA(dbObj, label = NULL, dotSize = 3.2)
+dev.off()
+```
+
+
+
+
+```{r fig.width=5.1, fig.height=4.8}
+plot(dbObj)
+```
+
+```{r eval=FALSE, include=FALSE}
+pdf("20220410mod/final_cuttag_Rxrg.diff_peak.correlation.pdf",
+    width = 5.1, height = 4.8)
+plot(dbObj)
+dev.off()
+```
+
+
+## run DESeq2/edgeR         
+
+
+```{r}
+dbObj <- dba.contrast(dbObj, categories = DBA_CONDITION, minMembers = 2,contrast = c("Condition","Rxrg_WT","Rxrg_KO"))
+```
+
+
+```{r paged.print=FALSE}
+dbObj
+```
+
+```{r}
+# Performing the differential enrichment analysis
+dbObj <- dba.analyze(dbObj, method = DBA_ALL_METHODS)
+```
+
+### result             
+
+```{r paged.print=FALSE}
+dbObj
+```
+
+#### extract all                       
+
+```{r}
+res_deseq <- dba.report(dbObj, method = DBA_DESEQ2, contrast = 1, th= 1)
+res_edgeR <- dba.report(dbObj, method = DBA_EDGER, contrast = 1, th= 1)
+```
+
+
+### check DESeq2                             
+
+#### top20              
+
+```{r paged.print=FALSE}
+data.frame(res_deseq[1:20,])
+```
+
+#### one zero       
+
+```{r paged.print=FALSE}
+data.frame(res_deseq) %>% filter(Conc_Rxrg_KO ==0 | Conc_Rxrg_WT ==0)
+```
+
+
+#### number             
+
+```{r}
+dim(data.frame(res_deseq) %>% filter(p.value < 0.05))
+dim(data.frame(res_deseq) %>% filter(p.value < 0.05 & Fold >0))
+dim(data.frame(res_deseq) %>% filter(p.value < 0.05 & Fold <0))
+```
+
+
+#### volcano            
+
+```{r}
+
+volpp <- function(res_diffbind, Font=12, volcanoy="p.value", Cnt="ILC2 ATAC KOvsWT", color=c("#CC0000","#BBBBBB","#2f5688")){
+  res_diffbind <- data.frame(res_diffbind)
+  res_diffbind$Group[res_diffbind$Fold>0] <- "up-regulated"
+  res_diffbind$Group[res_diffbind$Fold<0] <- "dn-regulated"
+  res_diffbind$Group[res_diffbind[,volcanoy]>0.05] <- "not-significant"
+  res_diffbind$Group <- factor(res_diffbind$Group, 
+                               levels = c("dn-regulated","not-significant","up-regulated"))
+  res_diffbind$logP <- -log10(res_diffbind$p.value)
+
+  maxX <- max(abs(range(res_diffbind$Fold)))*1.1
+
+volplot1 <- ggscatter(res_diffbind, x = "Fold", y = "logP", fill = "Group", 
+                       color = "Group",
+                       #palette = color,
+                       size = 3.5,alpha=0.75, shape = 21,
+                       #label = "Genes",
+                       font.label = Font, repel = F,
+                       xlab = "diffbind Fold", ylab=paste0("-log10(",volcanoy,")")) + theme_classic() +
+    #geom_text_repel(mapping = aes(x = Ret$log2FoldChange, y = Ret$pp, label = Ret$Genes), max.overlaps = 50) +
+    guides(color=guide_legend(reverse=TRUE,title = Cnt)) +
+    #geom_vline(xintercept = c(-log2(FC),log2(FC)), linetype="dashed") +
+    geom_hline(yintercept = -log10(0.05), linetype="dashed") 
+volplot1
+
+}
+
+```
+
+
+```{r fig.width=6, fig.height=4.5}
+volpp(res_deseq, Font=12, volcanoy="p.value", Cnt="ILC2 CUTTag Rxrg WTvsKO",
+      #color = c("#CC0000","#BBBBBB","#2f5688")[2:3]) + 
+      color = c("#BBBBBB","black")) + 
+  scale_colour_manual(values = c("#6E6E6E","black"))+guides(colour = "none") +
+  scale_fill_manual(values = c("#BBBBBB","#F87E79")) +
+  labs(title=paste0("DESeq2 differential peaks",
+                    "\nup: ",dim(data.frame(res_deseq) %>% filter(p.value < 0.05 & Fold >0))[1],
+                    "\ndn: ",dim(data.frame(res_deseq) %>% filter(p.value < 0.05 & Fold <0))[1])) + xlim(c(-1,4.5)) +
+  guides(fill = guide_legend(reverse=TRUE))
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("20220410mod/final_cuttag_Rxrg.diff_peak.volcano.pdf",
+       plot = last_plot(),
+       width = 6, height = 4.5)
+```
+
+
+##### 20220410mod              
+edgeR got much more but also higher false-positive ratio ?        
+just use DESeq2 results          
+
+```{r}
+dim(data.frame(res_edgeR) %>% filter(p.value < 0.05))
+```
+
+
+## 0507mod           
+
+DESeq2 p0.05, plot peak annotation                        
+
+
+### annotation                
+
+
+```{r}
+peakAnno_deseq <- annotatePeak(res_deseq, tssRegion = c(-3000,3000), TxDb = TxDb.Mmusculus.UCSC.mm10.knownGene,
+                                          annoDb="org.Mm.eg.db")
+```
+
+#### stat: all          
+
+```{r paged.print=FALSE}
+peakAnno_deseq
+```
+
+
+#### stat: p<0.05
+
+```{r paged.print=FALSE}
+stat.p0.05 <- data.frame(table(sapply((data.frame(peakAnno_deseq@anno) %>% filter( p.value < 0.05 ))$annotation,
+                          function(x) strsplit(x,' (E', fixed = T)[[1]][1] )  ))
+stat.p0.05
+```
+
+
+#### stat: p<0.01
+
+```{r paged.print=FALSE}
+stat.p0.01 <- data.frame(table(sapply((data.frame(peakAnno_deseq@anno) %>% filter( p.value < 0.01 ))$annotation,
+                          function(x) strsplit(x,' (E', fixed = T)[[1]][1] )  ))
+stat.p0.01
+```
+
+
+```{r}
+res_deseq.p0.05 <- dba.report(dbObj, method = DBA_DESEQ2, contrast = 1, th= 0.05, bUsePval = TRUE)
+peakAnno_deseq.p0.05 <- annotatePeak(res_deseq.p0.05, tssRegion = c(-3000,3000), TxDb = TxDb.Mmusculus.UCSC.mm10.knownGene,
+                                          annoDb="org.Mm.eg.db")
+```
+
+```{r paged.print=FALSE}
+peakAnno_deseq.p0.05
+```
+
+```{r  fig.height=3.5, fig.width=6, message=FALSE, warning=FALSE}
+ChIPseeker::plotAnnoPie(peakAnno_deseq, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E4E290","#E2E2E2"))
+```
+
+```{r  fig.height=3.5, fig.width=6, message=FALSE, warning=FALSE}
+ChIPseeker::plotAnnoPie(peakAnno_deseq.p0.05, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E5E5E5","#E2E2E2"))
+```
+```{r}
+ChIPseeker::plotAnnoPie.csAnno(peakAnno_deseq.p0.05, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E5E5E5","#E2E2E2"))
+```
+
+```{r fig.width=8, fig.height=5}
+upsetplot(peakAnno_deseq.p0.05, vennpie=TRUE)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+pdf("I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_all.pdf",
+    width = 6.5, height = 3.5)
+ChIPseeker::plotAnnoPie(peakAnno_deseq, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E4E290","#E2E2E2"))
+
+dev.off()
+
+pdf("I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_p0.05.pdf",
+    width = 6.5, height = 3.5)
+ChIPseeker::plotAnnoPie.csAnno(peakAnno_deseq.p0.05, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E5E5E5","#E2E2E2"))
+dev.off()
+```
+
+
+#### 0525mod         
+
+```{r fig.height=3.5, fig.width=6}
+ChIPseeker::plotAnnoPie(peakAnno_deseq, cex = 0.25,ndigit = 2,
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E4E290","#E2E2E2"),
+                        lty=1,lwd=0.001,border=NA)
+```
+
+```{r  fig.height=3.5, fig.width=6, message=FALSE, warning=FALSE}
+ChIPseeker::plotAnnoPie(peakAnno_deseq.p0.05, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E5E5E5","#E2E2E2"),
+                        lty=1,lwd=0.001,border=NA)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+pdf("I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_all.thin0525.pdf",
+    width = 6.5, height = 3.5)
+ChIPseeker::plotAnnoPie(peakAnno_deseq, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E4E290","#E2E2E2"),
+                        lty=1,lwd=0.1,border=NA)
+
+dev.off()
+
+pdf("I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_p0.05.thin0525.pdf",
+    width = 6.5, height = 3.5)
+ChIPseeker::plotAnnoPie.csAnno(peakAnno_deseq.p0.05, 
+                               col = c("#A1CBDB","#47A3B9","#057DC4","#6E9F4E","#F16B61",
+                                       "#F46F40","#F5902E","#DABC86","#BDBEC0","#E5E5E5","#E2E2E2"),
+                        lty=1,lwd=0.1,border=NA)
+dev.off()
+```
+
+
+#### top annotation           
+
+```{r paged.print=FALSE}
+#data.frame(peakAnno_deseq@anno)[1:100,c(1:11,12,20,22,23)][1:50,]
+```
+
+
+
+#### save annotated csv              
+
+```{r eval=FALSE, include=FALSE}
+write.table(data.frame(peakAnno_deseq@anno) %>% arrange(p.value), 
+            "I:/Shared_win/projects/202204_RxrgILC2/peak_anno/ILC2_CUTTag_Rxrg.macs3_q0.25.diffbind_deseq2.anno_all.tsv",
+            col.names = T, row.names = F, sep = "\t", quote = F)
+
+#write.csv(print(peakAnno_deseq),
+#          "I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_all.tsv")
+
+
+#
+write.table(data.frame(peakAnno_deseq.p0.05@anno) %>% arrange(p.value), 
+            "I:/Shared_win/projects/202204_RxrgILC2/peak_anno/ILC2_CUTTag_Rxrg.macs3_q0.25.diffbind_deseq2.anno_p0.05.tsv",
+            col.names = T, row.names = F, sep = "\t", quote = F)
+
+
+
+
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+# 20220507mod
+sink(file = "I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_all.tsv",append = F, split = TRUE)
+```
+
+```{r paged.print=FALSE}
+peakAnno_deseq
+```
+
+```{r eval=FALSE, include=FALSE}
+sink()
+```
+
+
+```{r eval=FALSE, include=FALSE}
+# 20220507mod
+sink(file = "I:/Shared_win/projects/202204_RxrgILC2/peak_anno/stat.anno_p0.05.tsv",append = F, split = TRUE)
+```
+
+```{r paged.print=FALSE}
+peakAnno_deseq.p0.05
+```
+
+```{r eval=FALSE, include=FALSE}
+sink()
+```
+
+

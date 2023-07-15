@@ -1,0 +1,268 @@
+---
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+
+# 20210601/0630_SS2_ZY, final          
+
+
+```{r include=FALSE}
+source("I:/Shared_win/projects/RNA_normal/analysis.r")
+library(Seurat)
+library(ggplot2)
+```
+
+```{r}
+color.test <- colorRampPalette(
+  c(
+    "#03047F", # deep blue
+    "white",
+    "#CC2627"  # deep red
+  )
+)(100)
+```
+
+
+
+## check Immunity2019       
+
+### load processed data         
+
+
+#### overlapped TFs       
+
+
+```{r}
+TFs.2 <- as.vector(unlist(read.table("J:/projects_local/projects/20210630_SS2_ZY/final_0811/patterns/adv2_7.genes_go.txt")))
+```
+
+```{r}
+length(TFs.2)
+TFs.2
+```
+
+
+#### resorted obj    
+
+```{r}
+# pp.lp.obj.sort
+load("J:/projects_local/projects/20210630_SS2_ZY/analysis_1008/pp_lp_obj_v1.meta_recovered_20211009.sort.rda")
+pp.lp.obj.sort
+```
+
+
+### 2202205mod                      
+
+```{r}
+p2 <- DotPlot(subset(pp.lp.obj.sort, cells=colnames(pp.lp.obj.sort)[pp.lp.obj.sort$treat=="PBS"]),
+        group.by = "Anno_resort",
+        features = TFs.2[TFs.2 %in% rownames(pp.lp.obj.sort)],
+        scale = T) + coord_flip() + theme(axis.text.x=element_text(angle=90, hjust=1, vjust = 0.3))
+#p2$data
+df_p2 <- reshape2::dcast(p2$data[,c(3,4,1)],features.plot~id)
+rownames(df_p2) <- as.character(df_p2[,1])
+df_p2 <- df_p2[,2:ncol(df_p2)]
+```
+
+#### subset the matrix                  
+
+```{r}
+df_p2.mod <- df_p2[1:21,c(5,1:4,22:27,18:21,6:17)]
+round(df_p2.mod,3)
+```
+
+```{r message=FALSE, warning=FALSE}
+df_p2.modz <- zscore_mat(df_p2.mod)
+round(df_p2.modz,3)
+```
+
+
+```{r fig.width=7.6, fig.height=6}
+pheatmap::pheatmap(df_p2.mod, 
+                   scale = "row",
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   breaks = seq(-3,3,0.06),
+                   fontsize_row = 8,
+                   color = color.test,
+                   main = "" 
+                   #Immunity2019 only PBS, heatmap of final_2 TFs\n(zscore of mean expression
+                   )
+```
+
+
+### entropy score           
+
+```{r}
+## shanno.entropy
+# ref. https://davetang.org/muse/2013/08/28/tissue-specificity/
+#
+# Q version for specific tissue
+#    https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1088961/
+#     'Measuring tissue specificity with entropy: Qg|t'
+#
+shannon.entropy <- function(p,returnH=TRUE,returnQ=FALSE){
+  if (min(p) < 0 || sum(p) <= 0 || is.na(p[1])) return(NA)
+  else {p.norm <- p[p>0]/sum(p)
+  
+  if(returnH==TRUE){
+    return(-sum(log2(p.norm)*p.norm))
+  }else if(returnQ==TRUE){
+    return(-sum(log2(p.norm)*p.norm) - log2(p[2]/sum(p)))
+  }else{
+    return(NA)
+  }
+}}
+
+
+```
+
+
+```{r paged.print=FALSE}
+ShE.mod <- rep(NA, nrow(df_p2.mod))
+for(i in 1:length(ShE.mod)){
+  ShE.mod[i] <- shannon.entropy(as.vector(as.matrix(df_p2.mod[i,])))
+}
+ShE.mod <- data.frame(row.names = rownames(df_p2.mod),
+                      ShE.mod)
+ShE.mod
+```
+
+
+```{r eval=FALSE, include=FALSE}
+write.csv(df_p2.mod, "I:/Shared_win/projects/202204_RxrgILC2/data_to_use/Immunity2019xTFs.PBS_sorted.mean_TP10k.csv")
+write.csv(df_p2.modz, "I:/Shared_win/projects/202204_RxrgILC2/data_to_use/Immunity2019xTFs.PBS_sorted.zscore.csv")
+write.csv(data.frame(ShE.mod,
+                     "neg.log2"= -log2(ShE.mod[,1]),
+                     "one.devided.byShE"= 1/ShE.mod[,1]), 
+          "I:/Shared_win/projects/202204_RxrgILC2/data_to_use/Immunity2019xTFs.PBS_sorted.entropy.csv")
+```
+
+
+### umap               
+
+```{r}
+GEX.seur <- subset(pp.lp.obj.sort, cells=colnames(pp.lp.obj.sort)[pp.lp.obj.sort$treat=="PBS"])
+GEX.seur <- subset(GEX.seur, subset=Anno_resort %in% colnames(df_p2[1:21,c(5,1:4,22:27,6:14,18:21)]))  # remove stromal
+
+GEX.seur$Anno_resort <- factor(as.character(GEX.seur$Anno_resort),
+                               levels = colnames(df_p2[1:21,c(5,1:4,22:27,6:21)]))
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+saveRDS(GEX.seur, "I:/Shared_win/projects/202204_RxrgILC2/data_to_use/pp.lp.resort.obj20220402.rds")
+```
+
+
+```{r fig.height=4.5, fig.width=9}
+DimPlot(GEX.seur, label = T, label.size = 2.5)
+```
+
+```{r}
+## make the figure non-vector to decrease the size
+feat.genes <- c("Rxrg","Cd3d","Cd19","Itgax","Il7r","Gata3","Klrg1","Calca")
+
+feature.pp <- lapply(feat.genes, function(x){
+  #FeaturePlot(GEX.seur, features = x, cols = colors.umap) + NoLegend()
+  FeaturePlot(GEX.seur, features = x)
+})
+
+feature.p <- lapply(feat.genes, function(x){
+  #FeaturePlot(GEX.seur, features = x, cols = colors.umap) + NoLegend()
+  FeaturePlot(GEX.seur, features = x, pt.size = 2.5)
+})
+
+feature.p <- lapply(feature.p, AugmentPlot)
+
+# color 
+
+feature.ppt <- lapply(feat.genes, function(x){
+  #FeaturePlot(GEX.seur, features = x, cols = colors.umap) + NoLegend()
+  FeaturePlot(GEX.seur, features = x,cols = c("#D2D2D2","#F81431"))
+})
+
+
+feature.pt <- lapply(feat.genes, function(x){
+  #FeaturePlot(GEX.seur, features = x, cols = colors.umap) + NoLegend()
+  FeaturePlot(GEX.seur, features = x, pt.size = 3.2,cols = c("#D2D2D2","#F81431"))
+})
+
+feature.pt <- lapply(feature.pt, AugmentPlot)
+```
+
+
+```{r fig.width= 15, fig.height=7.6}
+cowplot::plot_grid(plotlist = feature.p, ncol = 4)
+```
+
+
+```{r fig.width= 15, fig.height=7.6}
+cowplot::plot_grid(plotlist = feature.pt, ncol = 4)
+```
+
+
+## comparison plot                        
+
+
+```{r}
+df_p2.modz <- read.csv("I:/Shared_win/projects/202204_RxrgILC2/data_to_use/Immunity2019xTFs.PBS_sorted.zscore.csv")
+rownames(df_p2.modz) <- df_p2.modz$X
+df_p2.modz <- df_p2.modz[,-1]
+df_p2.modz
+```
+
+```{r paged.print=FALSE}
+df_p2.ShE <- read.csv("I:/Shared_win/projects/202204_RxrgILC2/data_to_use/Immunity2019xTFs.PBS_sorted.entropy.csv")
+rownames(df_p2.ShE) <- df_p2.ShE$X
+df_p2.ShE <- df_p2.ShE[,-1]
+df_p2.ShE
+```
+
+
+```{r}
+mat.time <- read.csv("J:/projects_local/projects/20210630_SS2_ZY/final_0811/figures_20220429mod/adv2_7.2_9.pattern_heatmap.tpm_matrix.csv")
+mat.time
+```
+
+```{r}
+mat.IL25 <- mat.time %>% filter(program == "cluster6")
+mat.IL25 <- mat.IL25[,c(1,2:5,14:25)]
+rownames(mat.IL25) <- mat.IL25$X
+mat.IL25 <- mat.IL25[,-1]
+mat.IL25
+```
+
+```{r}
+matz.IL25 <- zscore_mat(mat.IL25)
+matz.IL25
+```
+
+```{r paged.print=FALSE}
+data.comp <- data.frame(genes = rownames(matz.IL25),
+                        bulk.C00h_Zmean = rowMeans(matz.IL25[,1:4]),
+                        single.ILC2_meanZ = df_p2.modz[rownames(matz.IL25),"X12_ILC2"],
+                        single.entropy_reciprocal = df_p2.ShE[rownames(matz.IL25),"one.devided.byShE"])
+data.comp
+```
+
+```{r fig.height=4.5, fig.width=5.5}
+pp.comp <- data.comp %>%
+  ggplot(mapping = aes(x= single.ILC2_meanZ, y=bulk.C00h_Zmean, label = genes, size=single.entropy_reciprocal)) +
+  geom_point(shape=21, color="black", fill = "#919191") + 
+  geom_text_repel(max.overlaps = 50, size=2.8, force_pull = 1.5) + 
+  guides(size=guide_legend(title = "1/Entropy")) +
+  theme_bw() + theme(panel.grid = element_blank())
+pp.comp
+```
+
+
+
+
+
+

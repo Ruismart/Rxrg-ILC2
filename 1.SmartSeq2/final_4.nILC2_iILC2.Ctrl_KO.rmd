@@ -1,0 +1,669 @@
+---
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+
+# 20210707_SS2_ZY, final              
+
+ILC2, n/i - Ctrl/KO      
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#necessary packages and functions  
+source("I:/Shared_win/projects/RNA_normal/analysis.r")
+```
+
+## initial            
+
+### load expression mtx       
+
+```{r echo=FALSE}
+# specify matrix path and name to save files then
+dat = '../output/RNAseq.20210707_SS2_ZY.counts.gene.matrix'
+mtxname = 'SS2_ZY_20210707'
+
+# specify names of 'A vs B', and cell idx of As and Bs
+#Aname = "" 
+#Bname = ""  
+
+#Aidx = c()
+#Bidx = c()
+
+# specify filtering cutoffs
+cut_count = 2 
+cut_cell = 3
+
+#
+mat_raw <- read.table(dat, header = TRUE, stringsAsFactors = F , sep = "\t")
+rownames(mat_raw) <- mat_raw$gene_id
+mat_raw <- mat_raw[,2:ncol(mat_raw)]
+
+mat_raw <- edgeR::cpm(mat_raw)
+
+# round the reads count from rsem output
+mat_raw <- round(mat_raw)
+
+# choose only protein_coding genes
+list_pc <- 'I:/Shared_win/genomics/mouse/GRCm38_vM25/gtf_detail/list_pc.lv1_2'
+id_pc <- as.vector(unlist(read.table(list_pc)))
+mat_pc <- mat_raw[id_pc,]
+
+# filter for genes that expressed (CPM > 2) in at least 3 cells
+#mat_pc <- mat_pc[rowSums(mat_pc[,c(Aidx,Bidx)] >cut_count) >= cut_cell,]
+#mat_pc <- mat_pc[rowSums(mat_pc[,c(Aidx)] >cut_count) >= cut_cell |
+#                   rowSums(mat_pc[,c(Bidx)] >cut_count) >= cut_cell,]
+mat_pc <- mat_pc[rowSums(mat_pc[,c(1:4)] >cut_count) >= cut_cell |
+                   rowSums(mat_pc[,c(5:8)] >cut_count) >= cut_cell |
+                   rowSums(mat_pc[,c(9:12)] >cut_count) >= cut_cell |
+                   rowSums(mat_pc[,c(13:16)] >cut_count) >= cut_cell,]
+#mat_pc <- mat_pc[rowSums(mat_pc >cut_count) >= cut_cell,]
+matz_pc <- zscore_mat(log2(mat_pc+1))
+```
+
+
+check raw counts matrix
+```{r}
+dim(mat_raw)
+head(mat_raw)
+```
+ 
+ 
+check filtered pc(protein coding) matrix
+```{r}
+dim(mat_pc[,])
+head(mat_pc[,])
+``` 
+
+
+```{r echo=FALSE}
+cat(paste0("get ",dim(mat_pc)[1]," filtered (cpm > ",cut_count," in at least ",cut_cell," cells) protein-coding genes for next analysis"))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+# save CPM matrix
+mat_s <- mat_raw
+write.table(cbind.data.frame(gene=rownames(mat_s),mat_s),paste0("RNAseq.",mtxname,".raw_cpm.gene.csv"),
+            row.names = FALSE, col.names = TRUE, quote = FALSE, sep = ",")
+mat_s1 <- mat_pc
+write.table(cbind.data.frame(gene=rownames(mat_s1),mat_s1),paste0("RNAseq.",mtxname,".filt_cpm.pc_gene.csv"),
+            row.names = FALSE, col.names = TRUE, quote = FALSE, sep = ",")
+
+# save TPM matrix
+datt = '../output/RNAseq.20210707_SS2_ZY.tpm.gene.matrix'
+matt_raw <- read.table(datt, header = TRUE, stringsAsFactors = F , sep = "\t")
+rownames(matt_raw) <- matt_raw$gene_id
+matt_raw <- matt_raw[,2:ncol(matt_raw)]
+mat_s2 <- matt_raw
+write.table(cbind.data.frame(gene=rownames(mat_s2),mat_s2),paste0("RNAseq.",mtxname,".raw_tpm.csv"),
+            row.names = FALSE, col.names = TRUE, quote = FALSE, sep = ",")
+
+matt_pc <- matt_raw[rownames(mat_pc),]
+mat_s3 <- matt_pc
+write.table(cbind.data.frame(gene=rownames(mat_s3),mat_s3),paste0("RNAseq.",mtxname,".filt_tpm.pc_gene.csv"),
+            row.names = FALSE, col.names = TRUE, quote = FALSE, sep = ",")
+```
+
+
+### clustering                        
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(sva)
+library(ggplot2)
+```
+
+```{r echo=FALSE}
+cnts <- c(rep("nCL",4),rep("nKO",4),
+          rep("iCL",4),rep("iKO",4))
+bats <- colnames(mat_pc)
+reps <- c(rep(1:4,1),rep(1:4,1),
+          rep(1:4,1),rep(1:4,1))
+
+# variable genes
+rv <- rowVars(mat_pc[,])
+selt <- order(rv, decreasing = TRUE)[seq_len(2000)]
+
+#calculate principal components for the uncorrected data
+pca_obj = prcomp(t(mat_pc[selt,]), scale.=TRUE, center = TRUE)
+
+#pull PCA values out of the PCA object
+pca_d = as.data.frame(pca_obj$x)
+
+#assign labels to the data frame
+pca_d[,"condition"] = cnts
+pca_d[,"batch"] = bats
+pca_d[,"replicate"] = reps
+```
+
+```{r echo=FALSE}
+plot(pca_obj$sdev,pch=20, xlab="PC",ylab="Standard Variation", main="PCs of top2000 highly variable genes")
+```
+
+#### PCA         
+
+```{r echo=FALSE, fig.height=6, fig.width=6, message=FALSE, warning=FALSE}
+#plot the PCA
+#create a classic 2-dimension PCA plot (first two principal components) with conditions and library methods indicated
+cols <- c("#481567FF","#1F968BFF","#B5640B")
+cols <- c("nCL" = cols[2], "nKO" = cols[1], "iCL"=cols[2],"iKO"=cols[1])
+shapes <- c(16,17,15)
+shapes <- c(c("nCL"=shapes[1],"nKO"=shapes[1],"iCL"=shapes[2],"iKO"=shapes[2]))
+
+p1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition, shape=condition))
+#p1 = ggplot(data=pca_d, aes(x=PC1, y=PC2, color=condition))
+p1 = p1 + geom_point(size=2.5,show.legend = F)
+p1 = p1 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.5,show.legend = F)
+p1 = p1 + stat_ellipse(type="norm", linetype=2,show.legend = F)
+p1 = p1 + labs(title="PCA for 16 n/iILC2 gKO/Ctrl samples \nusing CPM(top2000 highly variable genes) ",
+               color="Condition", shape="batch")
+p1 = p1 + scale_colour_manual(values = cols) 
+p1 = p1 + scale_shape_manual(values=shapes)
+p1
+```
+
+
+#### tSNE           
+
+
+```{r}
+set.seed(123)
+# as Chris's method
+# to calculate tsne, make scaled and centered features multiply by Sd back
+pca.emb <- pca_obj$x %*% diag(pca_obj$sdev**2)
+
+tsne_out <- Rtsne::Rtsne(
+  as.matrix(pca.emb[,1:8]),
+  pca = FALSE,
+  perplexity = 3,
+  max_iter = 2000
+)
+tsne.emb <- data.frame(tsne_out$Y)
+tsne.emb[,"condition"] = cnts
+tsne.emb[,"batch"] = bats
+tsne.emb[,"replicate"] = reps
+
+tsne.emb[,"condition"] <- factor(as.character(tsne.emb[,"condition"]),
+                                 levels = c("nCL","iCL","nKO","iKO"))
+```
+
+
+```{r fig.height=6, fig.width=6, message=FALSE, warning=FALSE}
+#plot the tSNE
+p4 = ggplot(data=tsne.emb, aes(x=X1, y=X2, color=condition, shape = condition))
+p4 = p4 + geom_point(size=3.5,show.legend = F)
+p4 = p4 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.2,show.legend = F)
+p4 = p4 + stat_ellipse(type="norm", linetype=2,show.legend = F)
+p4 = p4 + labs(x="tSNE_1",y="tSNE_2",
+               title="tSNE",
+               color="Condition", shape="batch")
+p4 = p4 + scale_colour_manual(values = cols) 
+p4 = p4 + scale_shape_manual(values=shapes)
+p4
+```
+
+##### 20220409mod            
+
+```{r fig.height=4.5, fig.width=5.2, message=FALSE, warning=FALSE}
+#plot the tSNE
+#p4.2 = ggplot(data=tsne.emb, aes(x=X1, y=X2, color=condition, shape = condition))
+color.new <- c("#7CAE00","#00BFC4","#F8766D","#C77CFF")
+
+p4.2 = ggplot(data=tsne.emb, aes(x=X1, y=X2, fill=condition)) 
+p4.2 = p4.2 + xlim(c(-180,180)) + ylim(c(-22,22))
+#p4.2 = p4.2 + scale_color_manual(values = c(rep(color.new[1],4),
+#                                            rep(color.new[2],4),
+#                                            rep(color.new[3],4),
+#                                            rep(color.new[4],4)))
+p4.2 = p4.2 + geom_point(size=7.2, shape = 21, alpha=0.8)
+
+#p4.2 = p4.2 + ggrepel::geom_text_repel(mapping = aes(label=bats),size=2.2,show.legend = F)
+p4.2 = p4.2 + labs(x="tSNE_1",y="tSNE_2",
+               title="tSNE for 16 n/iILC2 gKO/Ctrl samples \nusing PC1-8 ")
+p4.2 = p4.2 + scale_fill_manual(values = color.new[c(1,2,3,4)]) 
+#p4.2 = p4.2 + scale_shape_manual(values=shapes)
+p4.2 = p4.2 + theme_bw() + theme(panel.grid = element_blank())
+p4.2
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("../check_0722/mod_20220407/20210707_SS2_ZY.initial_all.tsne_mod20220409.pdf",
+       plot = p4.2,
+       width = 5.2,
+       height = 4.5)
+```
+
+
+#### correlation                
+
+```{r include=FALSE}
+#define a function to plot correlation  
+plotCor <- function(Mat){
+  library(edgeR)
+  library(corrplot)
+  Cor <- cor(log2(edgeR::cpm(Mat)+1))
+  par(cex=0.54, pin=c(8,8))
+  corrplot(Cor,method="number",title = "pearson correlation of log2(CPM+1)",mar = c(0, 0, 1, 0))
+}
+```
+
+
+correlation (log2(CPM+1)) of all filtered protein-coding genes  
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=6}
+plotCor(mat_pc)
+```
+
+
+correlation (log2(CPM+1)) of all filtered protein-coding genes, grouping by correlation        
+
+```{r echo=FALSE,message=FALSE,warning=FALSE,fig.width=7.2,fig.height=7.2}
+  Ret_mat <- log2(mat_pc[,]+1)
+  Ret_cor <- cor(Ret_mat)
+  
+  lower = 0.85
+  upper = 1
+  pal <- "Reds"
+  
+  ht1 <- ComplexHeatmap::Heatmap(Ret_cor, col = circlize::colorRamp2(seq(lower, upper, ((upper-lower)/7)),RColorBrewer::brewer.pal(8, pal)),
+                  heatmap_legend_param = list(
+                  color_bar = "continuous",
+                  legend_direction = "horizontal",
+                  legend_width = unit(5, "cm"),
+                  title_position = "topcenter"),
+                  name = "Pearson correlation",
+                  column_names_gp = grid::gpar(fontsize = 10),
+                  row_names_gp = grid::gpar(fontsize = 10),
+                  top_annotation = NULL)
+  heatplot <- ComplexHeatmap::draw(ht1, heatmap_legend_side = "top")
+``` 
+
+
+##### iILC2 and nILC2 could be clearly seperated through PC1,            
+##### for iILC2, KO and CL are a little mixed,        
+##### for nILC2, KO and CL could be sepearated except nKO_1.               
+
+
+## differential                        
+
+run standard edgeR script to calculate DEGs for each contrast                   
+(here just load their results)           
+
+```{r}
+matt_pc <- read.table("./RNAseq.SS2_ZY_20210707.filt_tpm.pc_gene.csv",header = TRUE, sep = ",")
+rownames(matt_pc) <- matt_pc$gene
+matt_pc <- matt_pc[,2:ncol(matt_pc)]
+
+matt_raw <- read.table("./RNAseq.SS2_ZY_20210707.raw_tpm.csv",header = TRUE, sep = ",")
+rownames(matt_raw) <- matt_raw$gene
+matt_raw <- matt_raw[,2:ncol(matt_raw)]
+
+
+idx.nCL <- grep("nCL",colnames(matt_pc))
+idx.nKO <- grep("nKO",colnames(matt_pc))
+idx.iCL <- grep("iCL",colnames(matt_pc))
+idx.iKO <- grep("iKO",colnames(matt_pc))
+```
+
+```{r}
+idx.nCL
+idx.iCL
+idx.nKO
+idx.iKO
+```
+
+
+### iCL vs nCL       
+
+```{r}
+DEG_cnt3 <- read.table("../analysis_0712/edgeR_DEGs_cnt3.iCL_1.iCL_2.iCL_3.iCL_4_vs_nCL_1.nCL_2.nCL_3.nCL_4.csv", header = T, sep = ",")
+rownames(DEG_cnt3) <- DEG_cnt3$gene
+head(DEG_cnt3)
+```
+
+i_vs_n got a little too more DEGs, lower the padj to increase the significance level               
+##### padj0.01, FC1.5        
+
+```{r}
+DEG_cnt3.iCL_up <- proc_DEG(DEG_cnt3, abs = FALSE, padj = T, p.cut = 0.01, FC.cut = 1.5)
+DEG_cnt3.nCL_up <- proc_DEG(DEG_cnt3, abs = FALSE, padj = T, p.cut = 0.01, FC.cut = -1.5)
+```
+
+
+```{r echo=FALSE}
+cat("iILC2_Ctrl vs nILC2_Ctrl \nDEGs: ",length(c(DEG_cnt3.iCL_up$gene,DEG_cnt3.nCL_up$gene)),
+    "\n  up: ",length(c(DEG_cnt3.iCL_up$gene)),
+    "\ndown: ",length(c(DEG_cnt3.nCL_up$gene)))
+```
+
+#### heatmap          
+
+```{r fig.height=5.6, fig.width=2.8}
+pheatmap::pheatmap(log2(matt_pc[c(DEG_cnt3.nCL_up$gene,
+                                  rev(DEG_cnt3.iCL_up$gene)),
+                                c(idx.nCL,idx.iCL)]+1),
+         cluster_rows = F, cluster_cols = F, fontsize = 8,
+         show_rownames = F,
+         scale = "row",
+         col = color.test, 
+         main="ILC2 iCtrl vs nCtrl DEGs, \nnCL_up:1,485+ iCL_up:1,101 = 2,586")
+```
+
+#### volcano            
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Aname="iILC2_Ctrl"
+Bname="nILC2_Ctrl"
+
+rets.p0.01_FC1.5 <- finalplot(matt_pc[,c(idx.iCL,idx.nCL)],data.frame(DEG_cnt3), paste0(Aname,"_vs_",Bname), 0.01, 1.5, 
+                  Sign = FALSE, Sign_dn = 25, Sign_up = 25, padjust = TRUE, 
+                  Label = c(DEG_cnt3.iCL_up$gene[1:40],DEG_cnt3.nCL_up$gene[1:40]))
+```
+
+```{r echo=FALSE, fig.height=9, fig.width=12, warning=FALSE}
+rets.p0.01_FC1.5$vol + ylim(c(-5,220)) + labs(title="ILC2 iCtrl vs nCtrl DEGs, \nup:1,101+ down:1,485 = 2,586")
+```
+
+
+
+### nKO vs nCL             
+
+```{r}
+DEG_cnt1 <- read.table("../analysis_0712/edgeR_DEGs_cnt1.nKO_1.nKO_2.nKO_3.nKO_4_vs_nCL_1.nCL_2.nCL_3.nCL_4.csv", header = T, sep = ",")
+#DEG_cnt1 <- read.table("../analysis_0712/edgeR_DEGs_cnt1_cut.nKO_2.nKO_3.nKO_4_vs_nCL_1.nCL_2.nCL_3.nCL_4.csv", header = T, sep = ",")
+rownames(DEG_cnt1) <- DEG_cnt1$gene
+head(DEG_cnt1)
+```
+
+##### padj0.05, FC1.5        
+
+```{r}
+DEG_cnt1.nKO_up <- proc_DEG(DEG_cnt1, abs = FALSE, padj = T, p.cut = 0.05, FC.cut = 1.5)
+DEG_cnt1.nCL_up <- proc_DEG(DEG_cnt1, abs = FALSE, padj = T, p.cut = 0.05, FC.cut = -1.5)
+```
+
+
+```{r echo=FALSE}
+cat("nILC2_KO vs nILC2_Ctrl \nDEGs: ",length(c(DEG_cnt1.nKO_up$gene,DEG_cnt1.nCL_up$gene)),
+    "\n  up: ",length(c(DEG_cnt1.nKO_up$gene)),
+    "\ndown: ",length(c(DEG_cnt1.nCL_up$gene)))
+```
+
+#### heatmap           
+
+```{r fig.height=6.3, fig.width=2.8}
+pheatmap::pheatmap(log2(matt_pc[c(DEG_cnt1.nCL_up$gene,
+                                  rev(DEG_cnt1.nKO_up$gene)),
+                                c(idx.nCL,idx.nKO)]+1),
+         cluster_rows = F, cluster_cols = F, 
+           show_rownames = T, fontsize_row = 6, fontsize = 7.5,
+         scale = "row",
+         col = color.test, 
+         border_color = NA,
+         main="ILC2 nKO vs nCtrl DEGs, \nnCL_up:74 + nKO_up:42 = 116")
+```
+
+```{r eval=FALSE, include=FALSE}
+# 20220429 mod
+pdf("mod_20220429/20210707_SS2_ZY.cnt1_nKO_vs_nCL.heatmapz.p0.05_FC1.5.resort.nogrid.pdf",
+    width = 2.8,
+    height = 5.6)
+pheatmap::pheatmap(log2(matt_pc[c(DEG_cnt1.nCL_up$gene,
+                                  rev(DEG_cnt1.nKO_up$gene)),
+                                c(idx.nCL,idx.nKO)]+1),
+         cluster_rows = F, cluster_cols = F, 
+           show_rownames = T, fontsize_row = 6, fontsize = 7.5,
+         scale = "row",
+         col = color.test, 
+         border_color = NA,
+         main="ILC2 nKO vs nCtrl DEGs, \nnCL_up:74 + nKO_up:42 = 116")
+
+dev.off()
+
+```
+
+
+#### volcano            
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Aname="nILC2_KO"
+Bname="nILC2_Ctrl"
+
+rets.cnt1_p0.05_FC1.5 <- finalplot(matt_pc[,c(idx.nKO,idx.nCL)],data.frame(DEG_cnt1), paste0(Aname,"_vs_",Bname), 0.05, 1.5, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE, 
+                  Label = c(DEG_cnt1.nKO_up$gene[1:15],DEG_cnt1.nCL_up$gene[1:15]))
+```
+
+```{r echo=FALSE, fig.height=8, fig.width=10, warning=FALSE}
+rets.cnt1_p0.05_FC1.5$vol + ylim(c(-0.3,14)) + labs(title="ILC2 nKO vs nCtrl DEGs, \nup:42 + down:74 = 116") + theme(text = element_text(size = 5))
+```
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+rets.cnt1_p0.05_FC1.5.m <- finalplot(matt_pc[,c(idx.nKO,idx.nCL)],data.frame(DEG_cnt1), paste0(Aname,"_vs_",Bname), 0.05, 1.5, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE, 
+                  Label = c("Rxrg","Il10r","Il27ra","Ebi3",
+                            "Il1rl1","Il7r","Ccr2","Nrp1",
+                            "Nrros","Igf2r","Tgfbr3","Dusp1",
+                            "Cd74","H2-Aa","H2-ab1","Thfsf14",
+                            "Abcg1","Mylip",
+                            "Vcl","Kif4","Mybl2","Cdc25c",
+                            "Cdc25b","Ccne1","Pole2","Tubb2a",
+                            "Fbxo5","E2f8","E2f7"))
+```
+
+```{r echo=FALSE, fig.height=8, fig.width=10, warning=FALSE}
+rets.cnt1_p0.05_FC1.5.m$vol + ylim(c(-0.3,14)) #+ labs(title="ILC2 nKO vs nCtrl DEGs, \nup:42 + down:74 = 116") + theme(text = element_text(size = 5))
+```
+
+
+### nKO vs nCL, cut nKO_1                       
+
+```{r}
+#DEG_cnt1 <- read.table("../analysis_0712/edgeR_DEGs_cnt1.nKO_1.nKO_2.nKO_3.nKO_4_vs_nCL_1.nCL_2.nCL_3.nCL_4.csv", header = T, sep = ",")
+DEG_cnt1 <- read.table("../analysis_0712/edgeR_DEGs_cnt1_cut.nKO_2.nKO_3.nKO_4_vs_nCL_1.nCL_2.nCL_3.nCL_4.csv", header = T, sep = ",")
+rownames(DEG_cnt1) <- DEG_cnt1$gene
+head(DEG_cnt1)
+```
+
+##### padj0.05, FC1.5        
+
+```{r}
+DEG_cnt1.nKO_up <- proc_DEG(DEG_cnt1, abs = FALSE, padj = T, p.cut = 0.05, FC.cut = 1.5)
+DEG_cnt1.nCL_up <- proc_DEG(DEG_cnt1, abs = FALSE, padj = T, p.cut = 0.05, FC.cut = -1.5)
+```
+
+
+```{r echo=FALSE}
+cat("nILC2_KO vs nILC2_Ctrl \nDEGs: ",length(c(DEG_cnt1.nKO_up$gene,DEG_cnt1.nCL_up$gene)),
+    "\n  up: ",length(c(DEG_cnt1.nKO_up$gene)),
+    "\ndown: ",length(c(DEG_cnt1.nCL_up$gene)))
+```
+
+#### heatmap           
+
+```{r fig.height=6.3, fig.width=2.45}
+pheatmap::pheatmap(log2(matt_pc[c(DEG_cnt1.nCL_up$gene,
+                                  rev(DEG_cnt1.nKO_up$gene)),
+                                c(idx.nCL,idx.nKO)]+1),
+         cluster_rows = F, cluster_cols = F, 
+           show_rownames = F, fontsize_row = 6, fontsize = 7.5,
+         scale = "row",
+         col = color.test, 
+         border_color = NA,
+         main=paste0("ILC2 nKO vs nCtrl DEGs, \nnCL_up:",
+                     length(c(DEG_cnt1.nCL_up$gene)),
+                     " + nKO_up:",
+                     length(c(DEG_cnt1.nKO_up$gene)),
+                     " = ",
+                     length(c(DEG_cnt1.nKO_up$gene,DEG_cnt1.nCL_up$gene))))
+```
+
+```{r eval=FALSE, include=FALSE}
+# 20220429 mod
+pdf("mod_20220429/20210707_SS2_ZY.cnt1_cut.no_nKO_1.nKO_vs_nCL.heatmapz.p0.05_FC1.5.resort.nogrid.pdf",
+    width = 2.4,
+    height = 5.6)
+pheatmap::pheatmap(log2(matt_pc[c(DEG_cnt1.nCL_up$gene,
+                                  rev(DEG_cnt1.nKO_up$gene)),
+                                c(idx.nCL,idx.nKO)]+1),
+         cluster_rows = F, cluster_cols = F, 
+           show_rownames = F, fontsize_row = 6, fontsize = 6.5, fontsize_col = 10.5,
+         scale = "row",
+         col = color.test, 
+         border_color = NA,
+         main=paste0("ILC2 nKO vs nCtrl DEGs, \nnCL_up:",
+                     length(c(DEG_cnt1.nCL_up$gene)),
+                     " + nKO_up:",
+                     length(c(DEG_cnt1.nKO_up$gene)),
+                     " = ",
+                     length(c(DEG_cnt1.nKO_up$gene,DEG_cnt1.nCL_up$gene))))
+
+dev.off()
+
+pdf("mod_20220429/20210707_SS2_ZY.cnt1_cut.no_nKO_1.nKO_vs_nCL.heatmapz.p0.05_FC1.5.resort.nogrid.big.pdf",
+    width = 4.8,
+    height = 9.6)
+pheatmap::pheatmap(log2(matt_pc[c(DEG_cnt1.nCL_up$gene,
+                                  rev(DEG_cnt1.nKO_up$gene)),
+                                c(idx.nCL,idx.nKO)]+1),
+         cluster_rows = F, cluster_cols = F,  fontsize = 6.5, fontsize_col = 10.5,
+           show_rownames = T, fontsize_row = 1.6,
+         scale = "row",
+         col = color.test, 
+         border_color = NA,
+         main=paste0("ILC2 nKO vs nCtrl DEGs, \nnCL_up:",
+                     length(c(DEG_cnt1.nCL_up$gene)),
+                     " + nKO_up:",
+                     length(c(DEG_cnt1.nKO_up$gene)),
+                     " = ",
+                     length(c(DEG_cnt1.nKO_up$gene,DEG_cnt1.nCL_up$gene))))
+
+dev.off()
+```
+
+
+#### volcano            
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+Aname="nILC2_KO"
+Bname="nILC2_Ctrl"
+
+rets.cnt1_p0.05_FC1.5 <- finalplot(matt_pc[,c(idx.nKO,idx.nCL)],data.frame(DEG_cnt1), paste0(Aname,"_vs_",Bname), 0.05, 1.5, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE, 
+                  Label = c(DEG_cnt1.nKO_up$gene[1:15],DEG_cnt1.nCL_up$gene[1:15]))
+```
+
+```{r echo=FALSE, fig.height=8, fig.width=10, warning=FALSE}
+rets.cnt1_p0.05_FC1.5$vol + ylim(c(-0.3,14)) + labs(title=paste0("ILC2 nKO vs nCtrl DEGs, \nnCL_up:",
+                     length(c(DEG_cnt1.nCL_up$gene)),
+                     " + nKO_up:",
+                     length(c(DEG_cnt1.nKO_up$gene)),
+                     " = ",
+                     length(c(DEG_cnt1.nKO_up$gene,DEG_cnt1.nCL_up$gene)))) + theme(text = element_text(size = 5))
+```
+
+```{r fig.height=5.2, fig.width=5.2, message=FALSE, warning=FALSE, include=FALSE}
+rets.cnt1_p0.05_FC1.5.m <- finalplot(matt_pc[,c(idx.nKO,idx.nCL)],data.frame(DEG_cnt1), paste0(Aname,"_vs_",Bname), 0.05, 1.5, 
+                  Sign = FALSE, Sign_dn = 40, Sign_up = 40, padjust = TRUE, 
+                  Label = c("Rxrg","Il10r","Il27ra","Ebi3",
+                            "Il1rl1","Il7r","Ccr2","Nrp1",
+                            "Nrros","Igf2r","Tgfbr3","Dusp1",
+                            "Cd74","H2-Aa","H2-ab1","Thfsf14",
+                            "Abcg1","Mylip",
+                            "Vcl","Kif4","Mybl2","Cdc25c",
+                            "Cdc25b","Ccne1","Pole2","Tubb2a",
+                            "Fbxo5","E2f8","E2f7"))
+```
+
+```{r echo=FALSE, fig.height=8, fig.width=10, warning=FALSE}
+rets.cnt1_p0.05_FC1.5.m$vol + ylim(c(-0.3,14)) #+ labs(title="ILC2 nKO vs nCtrl DEGs, \nup:42 + down:74 = 116") + theme(text = element_text(size = 5))
+```
+
+
+
+## overall expression                
+
+OE scores using n/i signatures          
+
+
+```{r}
+OE_result8.1 <- easy_OE(mat_e = matt_raw[,c(idx.nCL,idx.nKO,idx.iCL,idx.iKO)],
+                      cells_s = colnames(matt_raw)[c(idx.nCL,idx.nKO,idx.iCL,idx.iKO)],
+                      path_n = list(iCtrl_up_p0.01_FC1.5="iCtrl_vs_nCtrl.iCtrl_up_p0.01_FC1.5_1101",
+                                    nCtrl_up_p0.01_FC1.5="iCtrl_vs_nCtrl.nCtrl_up.p0.01_FC1.5_1485"), 
+                      gene_sign = list(iCtrl_up_p0.01_FC1.5 = DEG_cnt3.iCL_up$gene,
+                                       nCtrl_up_p0.01_FC1.5 = DEG_cnt3.nCL_up$gene))
+```
+
+
+```{r}
+OE8.1 <- reshape2::melt(OE_result8.1$OE)
+colnames(OE8.1) <- c("sample","geneset","OE_score")
+OE8.1$condition <- rep(c(rep("nCtrl",length(idx.nCL)),
+                       rep("nKO",length(idx.nKO)),
+                       rep("iCtrl",length(idx.iCL)),
+                       rep("iKO",length(idx.iKO))),2)
+OE8.1$condition <- factor(OE8.1$condition,levels=c("nCtrl","iCtrl","nKO","iKO"))
+OE8.1
+```
+
+
+```{r}
+dat_mean8.1 <- OE8.1 %>%
+  group_by(condition,geneset) %>%
+  summarize(average = mean(OE_score)) %>% 
+  ungroup()
+```
+
+
+```{r fig.height=3.5, fig.width=4.5, message=FALSE, warning=FALSE}
+# stroke width control: https://www.5axxw.com/questions/content/dm1uxn
+
+p.OE8.3 <- ggplot(OE8.1, aes(x=condition, y=OE_score, fill=condition)) + 
+  ylim(c(-1.5,1.85)) + 
+  #geom_point() +
+  #geom_violin()+
+  geom_jitter(width = 0.35,shape=21, size=3, alpha= 0.65) +
+  #ggrepel::geom_label_repel(segment.color = NA,box.padding = 0.01, key_glyph = "point") + 
+  #ggbeeswarm::geom_quasirandom(groupOnX = FALSE) +
+  theme_bw() + Seurat::NoLegend()
+#  facet_grid(rows = "geneset") + 
+pp.OE8.3 <-  ggpubr::facet(p.OE8.3, facet.by = "geneset") + 
+  scale_fill_manual(values = c("#7CAE00","#00BFC4","#F8766D","#C77CFF")) +
+  stat_compare_means(aes(lable = ..p.signif..), comparisons = list(c("nCtrl","iCtrl"),
+                                                                   c("nKO","iKO"),
+                                                                   c("nCtrl","nKO"),
+                                                                   c("iCtrl","iKO")),
+                     label.y = c(1.2, 1.2, 1.5, 1.8), size=2.5,
+                     method = "t.test") +
+                     #method = "wilcox.test",
+                     #symnum.args = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1), symbols = c("****", "***", "**", "*", "ns"))) +
+  #geom_point(data = dat_mean1.1, 
+  #           color=c("darkgreen","darkgreen","darkblue","darkblue","darkred","darkred","purple","purple"),
+  #           mapping = aes(x=condition,y=average))+ 
+  #geom_point(data = dat_median1.1, 
+  geom_point(data = dat_mean8.1, 
+             color="black", shape=95,size=6,
+  #           mapping = aes(x=condition,y=median))+
+             mapping = aes(x=condition,y=average))+ 
+  theme(panel.grid = element_blank()) + 
+    labs(title = "Overall Expression of iCtrl_vs_nCtrl, nCtrl up-DEGs\n(using 0707 raw TPM matrix, t.test)")
+pp.OE8.3
+```
+
+```{r eval=FALSE, include=FALSE}
+ggsave("mod_20220407/20210707_SS2_ZY.OE_nCtrl_up_DEGs.20220408mod3.pdf",
+       pp.OE8.3,
+       width = 4.5,
+       height = 3.5)
+
+write.csv(OE8.1,"mod_20220407/20210707_SS2_ZY.OE_nCtrl_up_DEGs.OE_score.20220408mod3.csv")
+
+```
+
+
+
+
+
+
+
